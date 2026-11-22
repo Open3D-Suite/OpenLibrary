@@ -13,3 +13,11 @@ What changed for users in each version of OpenLibrary, newest first.
 - **Your settings come along.** The first time, the tabs and folders of the Python version are brought over
   from its settings; that version's own files are not touched.
 - In English and in Spanish, as the other Open3D apps.
+- **Drag a model into 3ds Max.** Drop a card on a 3ds Max window to merge it and place it with the mouse (it
+  rests on surfaces; the wheel turns it, a right click or Esc ends); with Shift it comes in as a Corona or
+  V-Ray proxy, with Ctrl in its original place. The same three choices are in the card's right-click menu.
+  The version of the scene's renderer is used, and the status bar says when there is none.
+- **The bridge in 3ds Max.** When OpenLibrary opens it offers to install its bridge in every 3ds Max 2025 or
+  later that lacks it, and to update one that is old. It lives beside the Python version's bridge, which
+  keeps working. It obeys only OpenLibrary: every request carries a token, kept encrypted for your Windows
+  user.
