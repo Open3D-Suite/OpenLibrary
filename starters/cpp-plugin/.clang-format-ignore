@@ -1,0 +1,3 @@
+# Copies of Open3D's common files: they keep the format of their original and are not changed here.
+src/open3d_settings.h
+src/open3d_settings.cpp

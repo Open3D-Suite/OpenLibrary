@@ -1,0 +1,20 @@
+# What build.ps1 builds, unless build.local.ps1 sends it elsewhere
+/build/
+
+# The release package that tools/repo.py package writes
+/dist/
+
+# Local build settings: folders of one computer (see build.ps1)
+/build.local.ps1
+/CMakeUserPresets.json
+
+# Python
+__pycache__/
+
+# Editors
+/.vs/
+/.vscode/
+*.user
+
+# Local Claude Code settings
+.claude/settings.local.json

@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# What a starter builds when it is tried in its own folder, and the local settings of one computer.
+# Each starter's own .gitignore keeps them out too.
+/starters/rust-program/target/
+/starters/rust-program/.cargo/config.local.toml
+/starters/cpp-plugin/build/
+/starters/cpp-plugin/build.local.ps1
+/starters/*/dist/
+
+# Editors
+/.vs/
+/.vscode/
+/.idea/
+
+# Local Claude Code settings
+.claude/settings.local.json

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- ProductCode and UpgradeCode are made once for OpenExample and never changed; until they are, the
+     tests fail. SeriesMax is needed: 3ds Max 2027 ignores a bundle without it. -->
+<ApplicationPackage
+    SchemaVersion="1.0"
+    AutodeskProduct="3ds Max"
+    ProductType="Application"
+    Name="OpenExample"
+    Description="One sentence: what OpenExample does in 3ds Max."
+    AppVersion="0.1.0"
+    ProductCode="{REPLACE-WITH-A-NEW-GUID}"
+    UpgradeCode="{REPLACE-WITH-A-NEW-GUID}">
+    <CompanyDetails Name="OpenExample contributors" />
+    <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2025" SeriesMax="2099" />
+    <Components Description="post-start-up scripts parts">
+        <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2025" SeriesMax="2099" />
+        <ComponentEntry AppName="OpenExample" Version="0.1.0" ModuleName="./Contents/scripts/openexample_startup.ms" />
+    </Components>
+</ApplicationPackage>

@@ -1,0 +1,27 @@
+# What the common Open3D tools need to know about this repository. tools/repo.py reads it, and
+# tools/check.ps1 runs the checks. Open3D-SDK has no version of its own and makes no release package:
+# a new app's repository is made from it with GitHub's "Use this template".
+
+# The checks, in the order they run. `full = true` would mark one that only tools/check.ps1 -Full runs.
+[[check]]
+name = "ruff format"
+run = ["ruff", "format", "--check", "."]
+
+[[check]]
+name = "ruff check"
+run = ["ruff", "check", "."]
+
+# Each starter made into a new app's repository in a temporary folder, as its author would make it, and
+# that repository's own checks run there (starters/check_starter.py). The Rust program needs Rust with
+# rustfmt and clippy; the C++ plug-in clang-format and Visual Studio with the C++ tools.
+[[check]]
+name = "rust-program starter"
+run = ["python", "starters/check_starter.py", "rust-program"]
+
+[[check]]
+name = "python-plugin starter"
+run = ["python", "starters/check_starter.py", "python-plugin"]
+
+[[check]]
+name = "cpp-plugin starter"
+run = ["python", "starters/check_starter.py", "cpp-plugin"]

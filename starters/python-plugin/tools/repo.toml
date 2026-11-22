@@ -1,0 +1,36 @@
+# What the common Open3D tools need to know about this repository. tools/repo.py reads it:
+# tools/check.ps1 runs the checks, "python -I tools/repo.py version set X.Y.Z" writes a new version,
+# "python -I tools/repo.py package" makes the release package and "release X.Y.Z" the release.
+
+# Where the version lives (`source`) and the other places that repeat it. Each one is a file and a
+# pattern whose one group is the version; "^" is the start of a line.
+[version]
+source = { file = "OpenExample.bundle/PackageContents.xml", pattern = '\bAppVersion="([^"]+)"' }
+places = [
+    { file = "OpenExample.bundle/PackageContents.xml", pattern = '<ComponentEntry [^>]*\bVersion="([^"]+)"' },
+    { file = "OpenExample.bundle/Contents/python/openexample/__init__.py", pattern = '^__version__ = "([^"]+)"' },
+    { file = "README.md", pattern = '^> Status: [^(\n]*\(v([^)\n]+)\)' },
+]
+
+# The checks, in the order they run. `full = true` would mark one that only tools/check.ps1 -Full runs:
+# one that needs 3ds Max (with the program "3dsmaxbatch" or "3dsmax-python"), the network or a long time.
+[[check]]
+name = "ruff format"
+run = ["ruff", "format", "--check", "."]
+
+[[check]]
+name = "ruff check"
+run = ["ruff", "check", "."]
+
+# The tests that need neither 3ds Max nor Qt.
+[[check]]
+name = "tests"
+run = ["python", "tests/run.py"]
+
+# The release package: dist/openexample-<version>-windows-x64-3dsmax.zip, with OpenExample.bundle at its
+# root and LICENSE inside it, and dist/SHA256SUMS.txt. The launcher installs it from there. Nothing is
+# built: the bundle goes in as Git has it.
+[package]
+name = "OpenExample"
+bundle = "OpenExample.bundle"
+files = ["OpenExample.bundle"]

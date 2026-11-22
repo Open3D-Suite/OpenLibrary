@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- ProductCode and UpgradeCode are made once for OpenExample and never changed; until they are,
+     build.ps1 -Plugin refuses to put the bundle together. -->
+<ApplicationPackage
+    SchemaVersion="1.0"
+    AutodeskProduct="3ds Max"
+    ProductType="Application"
+    Name="OpenExample"
+    Description="One sentence: what OpenExample does in 3ds Max."
+    AppVersion="0.1.0"
+    ProductCode="{REPLACE-WITH-A-NEW-GUID}"
+    UpgradeCode="{REPLACE-WITH-A-NEW-GUID}">
+    <CompanyDetails Name="OpenExample contributors" />
+    <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2027" SeriesMax="2027" />
+    <!-- One component per 3ds Max version: a plug-in built with the SDK of one version does not load in
+         another. -->
+    <Components Description="plugins parts">
+        <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2027" SeriesMax="2027" />
+        <ComponentEntry AppName="OpenExample" Version="0.1.0" ModuleName="./Contents/plugins/2027/OpenExample.gup" />
+    </Components>
+</ApplicationPackage>

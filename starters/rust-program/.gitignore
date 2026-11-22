@@ -1,0 +1,7 @@
+/target/
+/dist/
+/.cargo/config.local.toml
+__pycache__/
+
+# Local Claude Code settings
+.claude/settings.local.json

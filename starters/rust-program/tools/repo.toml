@@ -1,0 +1,62 @@
+# What the common Open3D tools need to know about this repository. tools/repo.py reads it:
+# tools/check.ps1 runs the checks, "python -I tools/repo.py version set X.Y.Z" writes a new version,
+# "python -I tools/repo.py package" makes the release package and "release X.Y.Z" the release.
+
+# Where the version lives (`source`) and the other places that repeat it. Each one is a file and a
+# pattern whose one group is the version; "^" is the start of a line.
+[version]
+source = { file = "Cargo.toml", pattern = '^version = "([^"]+)"' }
+places = [
+    { file = "Cargo.lock", pattern = '^name = "openexample"\nversion = "([^"]+)"' },
+    { file = "README.md", pattern = '^\*\*Version ([^*]+)\*\*' },
+]
+# Run after a new version is written: cargo looks Cargo.lock over, without touching the libraries.
+after_set = [["cargo", "update", "--workspace", "--offline"]]
+
+# The checks, in the order they run. `full = true` would mark one that only tools/check.ps1 -Full runs:
+# one that needs 3ds Max, the network or a long time.
+[[check]]
+name = "cargo fmt"
+run = ["cargo", "fmt", "--all", "--check"]
+
+[[check]]
+name = "cargo clippy"
+run = ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]
+
+[[check]]
+name = "cargo test"
+run = ["cargo", "test", "--workspace", "--locked"]
+
+[[check]]
+name = "ruff format"
+run = ["ruff", "format", "--check", "."]
+
+[[check]]
+name = "ruff check"
+run = ["ruff", "check", "."]
+
+# The release package: dist/openexample-<version>-windows-x64.zip, with OpenExample.exe at its root, the
+# Windows Installer package dist/openexample-<version>-windows-x64.msi, which installs the same files into
+# C:\Program Files\Open3D\OpenExample, and dist/SHA256SUMS.txt. The launcher installs them from there.
+[package]
+name = "OpenExample"
+build = [["cargo", "build", "--release", "--locked"]]
+# THIRD-PARTY-LICENSES.txt: every library cargo links in, with its licence checked and its texts.
+third_party = "cargo"
+files = [
+    { from = "{cargo_target}/release/OpenExample.exe", to = "OpenExample.exe" },
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+]
+exe = "OpenExample.exe"
+version_answer = "OpenExample {version}"
+
+[package.msi]
+# Made once for OpenExample and never changed: by it Windows knows that a new version replaces the old.
+# Until a GUID is written here the packager refuses to make the package. Make one with
+#   python -c "import uuid; print(str(uuid.uuid4()).upper())"
+upgrade_code = "REPLACE-WITH-A-NEW-GUID"
+shortcut = "OpenExample"
+# The icon build.rs gives OpenExample.exe, for Installed apps.
+icon = "assets/icon.ico"
