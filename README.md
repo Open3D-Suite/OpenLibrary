@@ -1,56 +1,55 @@
-# Open3D-SDK
+# OpenLibrary
 
-The guidelines and the starting point for a new Open3D app.
+OpenLibrary is a library of 3D models, materials and textures for 3ds Max, with Corona and V-Ray: browse your own folders with previews, drag a model or a material into the scene, and catalogue new downloads in a click. A single Windows program, nothing
+else to install, no account. Part of the [Open3D](https://github.com/carlesllavata/Open3D) suite of
+open-source tools for 3D work.
 
-Open3D is a suite of free, open-source tools for 3D artists who use 3ds Max: a launcher that installs and
-updates the apps, programs of their own (OpenView, OpenRef, OpenFarm, OpenGaussian) and 3ds Max plug-ins
-(OpenTools, OpenManager, OpenScatter). Each app lives in a public repository of its own and works on its
-own. They share one way of being built, checked, packaged, installed and set up, so that the suite feels
-like one thing to the people who use it. The launcher and the list of apps are in
-[Open3D](https://github.com/carlesllavata/Open3D).
+**Version 0.1.0** – what changed in each version is in [`CHANGELOG.md`](CHANGELOG.md).
 
-This repository is a GitHub template. *Use this template* makes a new app's repository from it, with:
+## Install
 
-- the files every Open3D repository shares: the editor, Git, format and lint settings, the licence, and the
-  common tool in `tools/` (`check.ps1`, `repo.py` and its parts), which checks, versions, packages and
-  releases the app;
-- the CI, which runs the same checks on GitHub on every push and pull request;
-- three starters in `starters/`, one per kind of app, each a full root of a new app's repository: a program
-  in Rust, a 3ds Max plug-in in Python, a 3ds Max plug-in in C++. Each one carries models of the README,
-  the CHANGELOG and the `CLAUDE.md`, and the code every app shares for its language and its folders;
-- these guides, in `docs/`.
+Windows 10 or 11, 64-bit. Nothing else is needed. Two ways:
 
-A repository made from it passes `tools\check.ps1` from its first commit.
+- **With the [Open3D launcher](https://github.com/carlesllavata/Open3D)**: press *Install* on
+  OpenLibrary's card. It is installed for everyone on the computer in
+  `C:\Program Files\Open3D\OpenLibrary`, with a shortcut in the Start menu, and Windows asks for
+  permission at each install and update. The launcher updates it and removes it.
+- **By hand**, from the releases page of this repository: `openlibrary-<version>-windows-x64.msi`
+  installs the same, in the same place. Or take `openlibrary-<version>-windows-x64.zip`, unzip it
+  anywhere and run `OpenLibrary.exe`: nothing is installed.
 
-> Status: early. A new app starts from `main`; what changes here: [CHANGELOG.md](CHANGELOG.md).
+The packages are not signed yet, so Windows' permission prompt says "Unknown publisher", and one
+downloaded by hand may first bring "Windows protected your PC": choose *More info* and then *Run
+anyway*. `SHA256SUMS.txt` on the release page lets you check the download.
 
-## Start a new app
+To remove OpenLibrary, use the launcher, or Windows' *Settings ▸ Apps ▸ Installed apps* for the MSI;
+for the zip, delete its folder. Its settings stay in `%APPDATA%\Open3D\OpenLibrary` and everything
+else it wrote in `%LOCALAPPDATA%\Open3D\OpenLibrary`; delete those folders too if you want them gone.
 
-1. Agree the app's name with the Open3D maintainer: Open + a name, such as OpenRef.
-2. Make its repository with *Use this template* and clone it.
-3. Copy the starter of your kind of app to the root, then remove `starters/`, `docs/` and this README.
-4. Replace the placeholder name `OpenExample` (`openexample`) and the values each app makes its own, such
-   as the upgrade code of a program's installer.
-5. Run `tools\check.ps1` until it passes, commit on a branch and open the first pull request.
+## Use
 
-Each step is in [docs/start-a-new-app.md](docs/start-a-new-app.md). Read the guides before you start:
-they say what an app must do to enter the launcher.
+Being rewritten in Rust; the working version, in Python, is [OpenLibrary-python](https://github.com/daniellopezcastellanos/OpenLibrary-python).
 
-## The guides
+OpenLibrary shows itself in the language of the Open3D launcher and the other Open3D apps, English or
+Spanish. Until one is chosen there, it follows Windows: Spanish if Windows is in Spanish, English
+otherwise.
 
-- [Start a new app](docs/start-a-new-app.md): from *Use this template* to the first pull request.
-- [Principles](docs/principles.md): who the apps are for and what every app has in common.
-- [Development](docs/development.md): the layout, the checks, formats, tests, commits and versions.
-- [Settings and folders](docs/settings-and-folders.md): the shared language and where an app keeps its
-  files.
-- [Security](docs/security.md): the rules every app follows, and the review before the launcher.
-- [Distribution](docs/distribution.md): the release package, the release and entering the launcher.
-- [Testing](docs/testing.md): unit tests and the real test as a user, in 3ds Max too.
-- [Working with Claude Code](docs/working-with-claude-code.md): the model `CLAUDE.md` and the working
-  rules.
+## Build
 
-## Licence
+Rust (stable) on Windows 10 or 11, 64-bit:
 
-Open3D-SDK is free software under the GNU General Public License, version 3 or later
-(`GPL-3.0-or-later`). See [`LICENSE`](LICENSE). An app made from it carries the same licence; its copyright
-is its author's and its contributors'.
+```
+cargo build --release
+```
+
+`tools\check.ps1` runs every check: it needs Python 3.11 or newer and the ruff that `ruff.toml` names.
+`python -I tools/repo.py package` runs them, builds and writes the release zip and the Windows
+installer (`.msi`, made with [WiX](https://wixtoolset.org) 5) to `dist/`.
+
+## License
+
+Copyright (C) 2026 daniellopezcastellanos and OpenLibrary contributors.
+
+OpenLibrary is free software under the GNU General Public License, version 3 or later
+(`GPL-3.0-or-later`). See [`LICENSE`](LICENSE). The libraries it contains and their licences are
+listed in `THIRD-PARTY-LICENSES.txt` inside the release zip.

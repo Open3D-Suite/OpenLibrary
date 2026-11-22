@@ -1,8 +1,32 @@
-# What the common Open3D tools need to know about this repository. tools/repo.py reads it, and
-# tools/check.ps1 runs the checks. Open3D-SDK has no version of its own and makes no release package:
-# a new app's repository is made from it with GitHub's "Use this template".
+# What the common Open3D tools need to know about this repository. tools/repo.py reads it:
+# tools/check.ps1 runs the checks, "python -I tools/repo.py version set X.Y.Z" writes a new version,
+# "python -I tools/repo.py package" makes the release package and "release X.Y.Z" the release.
 
-# The checks, in the order they run. `full = true` would mark one that only tools/check.ps1 -Full runs.
+# Where the version lives (`source`) and the other places that repeat it. Each one is a file and a
+# pattern whose one group is the version; "^" is the start of a line.
+[version]
+source = { file = "Cargo.toml", pattern = '^version = "([^"]+)"' }
+places = [
+    { file = "Cargo.lock", pattern = '^name = "openlibrary"\nversion = "([^"]+)"' },
+    { file = "README.md", pattern = '^\*\*Version ([^*]+)\*\*' },
+]
+# Run after a new version is written: cargo looks Cargo.lock over, without touching the libraries.
+after_set = [["cargo", "update", "--workspace", "--offline"]]
+
+# The checks, in the order they run. `full = true` would mark one that only tools/check.ps1 -Full runs:
+# one that needs 3ds Max, the network or a long time.
+[[check]]
+name = "cargo fmt"
+run = ["cargo", "fmt", "--all", "--check"]
+
+[[check]]
+name = "cargo clippy"
+run = ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]
+
+[[check]]
+name = "cargo test"
+run = ["cargo", "test", "--workspace", "--locked"]
+
 [[check]]
 name = "ruff format"
 run = ["ruff", "format", "--check", "."]
@@ -11,17 +35,28 @@ run = ["ruff", "format", "--check", "."]
 name = "ruff check"
 run = ["ruff", "check", "."]
 
-# Each starter made into a new app's repository in a temporary folder, as its author would make it, and
-# that repository's own checks run there (starters/check_starter.py). The Rust program needs Rust with
-# rustfmt and clippy; the C++ plug-in clang-format and Visual Studio with the C++ tools.
-[[check]]
-name = "rust-program starter"
-run = ["python", "starters/check_starter.py", "rust-program"]
+# The release package: dist/openlibrary-<version>-windows-x64.zip, with OpenLibrary.exe at its root, the
+# Windows Installer package dist/openlibrary-<version>-windows-x64.msi, which installs the same files into
+# C:\Program Files\Open3D\OpenLibrary, and dist/SHA256SUMS.txt. The launcher installs them from there.
+[package]
+name = "OpenLibrary"
+build = [["cargo", "build", "--release", "--locked"]]
+# THIRD-PARTY-LICENSES.txt: every library cargo links in, with its licence checked and its texts.
+third_party = "cargo"
+files = [
+    { from = "{cargo_target}/release/OpenLibrary.exe", to = "OpenLibrary.exe" },
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+]
+exe = "OpenLibrary.exe"
+version_answer = "OpenLibrary {version}"
 
-[[check]]
-name = "python-plugin starter"
-run = ["python", "starters/check_starter.py", "python-plugin"]
-
-[[check]]
-name = "cpp-plugin starter"
-run = ["python", "starters/check_starter.py", "cpp-plugin"]
+[package.msi]
+# Made once for OpenLibrary and never changed: by it Windows knows that a new version replaces the old.
+# Until a GUID is written here the packager refuses to make the package. Make one with
+#   python -c "import uuid; print(str(uuid.uuid4()).upper())"
+upgrade_code = "B6EA25CC-A9DE-4EB7-B9E3-D4953983A83F"
+shortcut = "OpenLibrary"
+# The icon build.rs gives OpenLibrary.exe, for Installed apps.
+icon = "assets/icon.ico"

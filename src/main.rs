@@ -5,14 +5,14 @@
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        None => openexample::run(),
+        None => openlibrary::run(),
         Some("--version" | "-V") => {
-            openexample::platform::attach_console();
-            println!("{}", openexample::version_line());
+            openlibrary::platform::attach_console();
+            println!("{}", openlibrary::version_line());
         }
         Some(other) => {
-            openexample::platform::attach_console();
-            eprintln!("OpenExample: unknown argument '{other}'. Usage: OpenExample, or OpenExample --version");
+            openlibrary::platform::attach_console();
+            eprintln!("OpenLibrary: unknown argument '{other}'. Usage: OpenLibrary, or OpenLibrary --version");
             std::process::exit(2);
         }
     }

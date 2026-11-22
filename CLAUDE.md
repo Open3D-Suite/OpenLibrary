@@ -1,80 +1,115 @@
-# Open3D-SDK
+# OpenLibrary
 
-The template a new Open3D app starts from: the guidelines in `docs/`, the common files every Open3D
-repository holds, and a starter for each kind of app (a Windows program in Rust, a 3ds Max plug-in in
-Python, one in C++). GitHub's "Use this template" makes a new app's repository from it.
+A library of 3D models, materials and textures for 3ds Max (Corona and V-Ray), with a small bridge inside 3ds Max. One Windows program, written in Rust
+with eframe/egui.
 
-This file holds facts about this repo only, each one checkable in the code. Update it in the same commit
-as a change that makes it old.
+This file holds facts about this repo only, each one checkable in the code, and how we work on it.
+Update it in the same commit as a change that makes it old.
+
+## How we work
+
+- **Language.** Talk to the author in their own language. Everything written in the repo is in English:
+  code, comments, commits, documents, CHANGELOG, releases.
+- **The author decides.** A working or design criterion is never decided alone: ask, one question at a
+  time, with 2 to 4 options, your recommendation and why. What every Open3D app shares (the common files,
+  the shared settings, the checks) is decided by Open3D's maintainers, and they approve what enters the
+  Open3D launcher: once the checks and the CI pass, after a review of the code, of its security and a
+  real test as a user.
+- **The code is the truth.** Check a claim in the code before relying on it.
+- **Plan first.** Before a large change, show a plan and wait for the author's OK.
+- **Commits.** Small, one step each, with one English sentence in the imperative. A format commit carries
+  no code change. A change a user can notice gets its entry in `CHANGELOG.md`, under `## In development`,
+  in the same commit.
+- **Pull requests.** Changes reach `main` through pull requests: work on a branch, the CI passes, someone
+  reviews it, then it is merged.
+- **Nothing goes out without the author's explicit OK:** no push, no tag, no release. A release stays a
+  draft on GitHub, and Open3D's maintainer publishes it. Tags are annotated, `vX.Y.Z`, and pushed one at
+  a time, never with `--tags`.
+- **Version numbers.** While the app is at 0.x, the middle number goes up when something stops being
+  compatible or a feature is added, the last one when only faults are fixed.
+- **Nothing is deleted without asking the author first,** each time.
+- **After a change** the program must build, pass `tools\check.ps1` and start.
+- **Keep this file true.** It states only what can be checked in the code and is updated in the same
+  commit as the change that makes it old. No history, no dated notes.
+- **Nothing of the author's computer in a published file:** no paths, user names, computer names or
+  network addresses. What belongs to one computer goes in an ignored file, such as
+  `.cargo/config.local.toml`.
 
 ## Layout
 
-- `docs/`: the guidelines for a new app's author.
-- `starters/`: one folder per kind of app, each the root of a new app's repository with the placeholder
-  name `OpenExample`: `rust-program/`, `python-plugin/`, `cpp-plugin/`. `starters/README.md` says what
-  each holds and what a new app makes its own.
-- `starters/check_starter.py`: makes a new app's repository from a starter in a temporary folder and runs
-  that repository's checks there.
-- At the root, the common files a new app's repository keeps (`.editorconfig`, `.gitattributes`,
-  `LICENSE`, `ruff.toml`, `tools/check.ps1`, `tools/repo.py` and its parts), and this repository's own
-  `README.md`, `CHANGELOG.md`, this file, `.gitignore`, `tools/repo.toml` and
-  `.github/workflows/check.yml`, which a starter's own replace in a new app.
+- `src/main.rs`: reads the arguments: `--version`, or the program itself.
+- `src/lib.rs`: what the program does, where the tests reach it: its name, its version, the text it shows.
+- `src/platform.rs`: every call to Windows but one.
+- `src/open3d_settings.rs`: what every Open3D app shares, the language and the folders of each app, with
+  the cases its tests read (`src/open3d_settings_cases.txt`).
+- `build.rs`: the exe's icon (`assets/icon.ico`) and file properties.
 
 ## Build and check
 
-- Nothing is built here but the starters, in temporary copies. `tools\check.ps1` runs every check, and
-  all must pass. It needs Python 3.11 or newer and the ruff that `ruff.toml` names; the starters need
-  Rust with rustfmt and clippy, Visual Studio with the C++ tools (MSVC, CMake, Ninja) and clang-format.
-  First what `tools/repo.py` has built in (every source, in the starters too, has its licence line; no
-  file holds a path of somebody's computer), then the commands that `tools/repo.toml` lists:
-  - `ruff format --check .` and `ruff check .`, the starters' Python included
-  - `python -I starters/check_starter.py <starter>` for each starter: the common files and the starter
-    at the root of a new Git repository with nothing committed, its codes made, and that repository's
-    own `tools/repo.py check`. For the Rust program: the version, the lints, format, clippy and its
-    tests. For the Python plug-in: the version, ruff and its tests. For the C++ plug-in: the version,
-    clang-format, and the build and tests of its library; not the plug-in, which needs the 3ds Max SDK.
+- Build: `cargo build --release --locked`. `.cargo/config.toml` links the Visual C++ runtime into the exe
+  (`+crt-static`), so `OpenLibrary.exe` needs no `VCRUNTIME140.dll`; it reads the ignored
+  `.cargo/config.local.toml` when there is one, for a build folder of one computer.
+- Checks: `tools\check.ps1` runs them all, and all must pass. It needs Python 3.11 or newer and the
+  ruff that `ruff.toml` names. First what `tools/repo.py` has built in, then the commands that
+  `tools/repo.toml` lists:
+  - the version agrees in `Cargo.toml`, `Cargo.lock` and the README; every source has its licence
+    line; `Cargo.toml` has the common lints; no file holds a path of somebody's computer
+  - `cargo fmt --all --check`
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`
+  - `cargo test --workspace --locked` (none needs the network or another program)
+  - `ruff format --check .` and `ruff check .`, for the Python in `tools/`
+- `tools\check.ps1 -Full` also runs the checks marked `full = true` in `tools/repo.toml`, those that need
+  3ds Max, the network or a long time; there are none yet. They must pass before each release.
 - CI: `.github/workflows/check.yml` runs `tools\check.ps1`, without `-Full`, on every push and pull request
-  to `main`, on GitHub's Windows runner, once with Python 3.11 and once with 3.13.
-- The common files come from the common folder of Open3D's maintainers, which copies them here and into
-  every Open3D repository: `.editorconfig`, `.gitattributes`, `LICENSE`, `ruff.toml`, `tools/check.ps1`,
-  `tools/repo.py`, `tools/repo_package.py`, `tools/repo_release.py`, `tools/repo_msi.py`, and in the
-  starters `rust-program/rustfmt.toml`, `rust-program/clippy.toml`, `rust-program/src/open3d_settings.rs`
-  with `open3d_settings_cases.txt`, `python-plugin/.../openexample/open3d_settings.py`, and
-  `cpp-plugin/src/open3d_settings.h` with its `.cpp`. Do not edit them here: they are overwritten.
+  to `main`, on GitHub's Windows runner with Python 3.14.
+- `.editorconfig`, `.gitattributes`, `rustfmt.toml`, `clippy.toml`, `ruff.toml`, `LICENSE`,
+  `tools/check.ps1`, `tools/repo.py`, `tools/repo_package.py`, `tools/repo_release.py`,
+  `tools/repo_msi.py`, `src/open3d_settings.rs` and `src/open3d_settings_cases.txt` come from Open3D's
+  common files and are the same in every Open3D repo. Do not change them here: a change to them is
+  proposed to Open3D's maintainers.
 
 ## Version and release
 
-- Open3D-SDK has no version of its own and makes no release package: `tools/repo.toml` has no `[version]`
-  nor `[package]`. A new app is made from `main`. What changes here goes into `CHANGELOG.md`, under
-  `## In development`.
-- Each starter is at version 0.1.0, and its CHANGELOG has only `## In development`: a new app's first
-  release turns it into `## 0.1.0`.
+- The version is in `Cargo.toml`. `python -I tools/repo.py version set X.Y.Z` writes it there, in
+  `Cargo.lock` and in the README's `**Version X.Y.Z**` line; `tools\check.ps1` fails if they disagree.
+- Changes a user can notice go into `CHANGELOG.md` under `## In development`, in the same commit.
+- `python -I tools/repo.py package` makes the release package as the `[package]` table of
+  `tools/repo.toml` says: the version and its `## X.Y.Z` section in the CHANGELOG, the quick checks,
+  `cargo build --release --locked` without this computer's folders in the exe, the licences of the
+  dependencies in `THIRD-PARTY-LICENSES.txt`, then `dist/openlibrary-<version>-windows-x64.zip`
+  (`OpenLibrary.exe`, README, LICENSE, CHANGELOG) and `dist/SHA256SUMS.txt`. It refuses an exe that holds
+  a path of the computer that built it, or whose file version or `--version` is not the version.
+- From the `[package.msi]` table it also makes `dist/openlibrary-<version>-windows-x64.msi` with WiX 5
+  (`wix` on PATH or as a .NET global tool): the same files, for everyone on the computer, into
+  `C:\Program Files\Open3D\OpenLibrary`, with the Start menu shortcut `OpenLibrary` and `assets/icon.ico`
+  in Installed apps. It is checked before it is written and never installed.
+- `python -I tools/repo.py release X.Y.Z` turns `## In development` into `## X.Y.Z — <date>`, sets the
+  version, commits `Release X.Y.Z`, packages, tags `vX.Y.Z` and prints the pushes to approve; run again
+  once they are done, it makes the GitHub release as a draft, with the zip, the MSI and
+  `SHA256SUMS.txt`. It never pushes. `--dry-run` tries it all and writes only to `dist/`.
+- The Open3D launcher needs `OpenLibrary.exe` at the root of the zip, with the release's version as its
+  file version.
 
 ## Rules of this code
 
 - A bug that is fixed comes with a test that fails without the fix, and new logic comes with its tests.
-- Every starter passes its own checks as it is, once its codes are made: a new app's repository passes
-  them from its first commit.
-- A starter follows the Open3D app of its kind: the Rust program follows OpenRef, the Python plug-in
-  OpenTools and OpenManager, the C++ plug-in OpenScatter.
-- The placeholder name is `OpenExample`; `openexample` in lower case (the crate, the Python package, the
-  file names) and `OPENEXAMPLE` in CMake. A code each app makes for itself is written
-  `REPLACE-WITH-A-NEW-GUID` or `REPLACE_WITH_TWO_NEW_NUMBERS`, and what uses it refuses it: the packager,
-  `tests/test_bundle.py`, `build.ps1 -Plugin` or the compiler. `check_starter.py` makes them as an author
-  does. `starters/README.md` lists every place a new app makes its own; it changes with them.
-- A starter's `CLAUDE.md` is a model: the five sections of an Open3D app's `CLAUDE.md`, with the texts the
-  author writes in angle brackets, and how we work.
-- No file names a computer. The guides, the starters and this repository's own files name no numbers of
-  the maintainers' decisions, whose record is not public; the common copies keep the ones their
-  originals have.
+  The interface is tried by hand before a release.
+- What can be tested lives in the library (`src/lib.rs` and its modules), not in `main.rs` nor in the
+  code that draws the window.
+- The language is the one every Open3D app shares, in `settings.json` (`%APPDATA%\Open3D`, or the folder
+  `OPEN3D_SETTINGS_DIR` names): `open3d_settings::language` reads it, and with no preference the language
+  of Windows decides. Every text of the interface exists in English and in Spanish. Only a person's
+  choice writes the file (`open3d_settings::write_language`).
+- Its files: settings in `open3d_settings::app_settings_dir(APP)` (`%APPDATA%\Open3D\OpenLibrary`),
+  everything else it writes in `app_data_dir(APP)` (`%LOCALAPPDATA%\Open3D\OpenLibrary`);
+  `OPEN3D_SETTINGS_DIR` and `OPEN3D_DATA_DIR` move them. Only the program creates them, when it first
+  writes there.
+- `unsafe` is denied. It is allowed by name, with its reason, only where Windows is called:
+  `src/platform.rs` and `user_interface_language` in `src/open3d_settings.rs`.
 
 ## Traps
 
-- GitHub runs only the root's workflow: a starter's `.github/workflows/check.yml` runs once the starter
-  is at the root of a new app.
-- Each starter's `.gitignore` applies here too, inside its folder: `rust-program/.cargo/config.local.toml`
-  and `cpp-plugin/build.local.ps1` hold the build folders of one computer and stay out of Git.
-- `check_starter.py` copies `.cargo/config.local.toml`, so that the Rust build reuses its folder, but
-  not `build.local.ps1`: CMake refuses a build folder made from another source folder.
-- The copies of the common C++ files are not formatted with `.clang-format`: the C++ starter's
-  `.clang-format-ignore` leaves them out.
+- The `upgrade_code` of `[package.msi]` never changes once a release has it: with another one, Windows
+  would install a new version beside the old one instead of in its place.
+- When the package is renamed in `Cargo.toml`, `cargo update --workspace --offline` brings `Cargo.lock`
+  in line; until then `--locked` refuses to build.
