@@ -55,6 +55,17 @@ Update it in the same commit as a change that makes it old.
   version's file once.
 - `src/texts.rs`: every text of the interface as a `Text`, English and Spanish side by side (`Text::get`), with
   `{name}` places filled by `fill`; its test fails on a text without Spanish or with other places.
+- `src/bridge_install.rs`: the bridge's files travel in the exe (`FILES`, `STARTUP`) and go to each 3ds Max
+  of the user (`find_targets`): `ENU\scripts\startup\open3d_openlibrary.ms` and `ENU\scripts\Open3D\OpenLibrary`
+  with `app.json` (exe, toolbar, `token_dpapi`). `outdated` compares every file; `pending` tells what is
+  missing or old.
+- `src/maxlink.rs`: the client: `bridge_token` (made once, kept encrypted with DPAPI in the data folder), `call`
+  and `discover` on 127.0.0.1:47820-47829, and `choose_file`, `relink_dirs`, `proxy_dir` for a merge.
+- `bridge/`: what runs inside 3ds Max (Python and MAXScript, English only): `olib_bridge/server.py` (refuses a
+  request without the token and closes on a line that is not a JSON object; only `COMMANDS`), `ops.py`,
+  `olib_core.ms` (every global starts with `olib_`), `config.py` (decrypts the token). It lives beside the
+  Python version's bridge (`scripts\OpenLibrary`, ports 47800-47809, prefix `olb_`) without touching it.
+  `bridge/tests` run without 3ds Max, with stand-ins for pymxs and Qt.
 - `src/open3d_settings.rs`: what every Open3D app shares, the language and the folders of each app, with
   the cases its tests read (`src/open3d_settings_cases.txt`).
 - `build.rs`: the exe's icon (`assets/icon.ico`) and file properties.
