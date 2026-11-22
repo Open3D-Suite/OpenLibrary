@@ -4,7 +4,9 @@
 //! it and passes the clicks on.
 
 use crate::library::{Asset, LibraryIndex, hidden_folders, norm_key};
+use crate::max_session::{MaxSession, MergeKind, merge_request};
 use crate::maxfile::{self, Engine, EngineCache};
+use crate::maxlink::MaxInfo;
 use crate::open3d_settings::{self, Language};
 use crate::settings::{self, Settings};
 use crate::texts::{Text, fill};
@@ -22,6 +24,8 @@ const VRAY: Color32 = Color32::from_rgb(0x2F, 0x7F, 0xD8);
 const FSTORM: Color32 = Color32::from_rgb(0x8A, 0x5C, 0xD6);
 const FOOTER: f32 = 30.0;
 const GAP: f32 = 8.0;
+/// The years of 3ds Max where the person chose not to be asked about the bridge again.
+const BRIDGE_SKIP: &str = "olib_bridge_skip";
 
 /// What a scan thread sends: how far it has got, or the index as far as it knows it and whether it has ended.
 enum Snapshot {
@@ -84,6 +88,9 @@ pub struct OpenLibraryApp {
     found: Receiver<Found>,
     asked: HashSet<PathBuf>,
     files: HashMap<PathBuf, (usize, usize)>,
+    max: MaxSession,
+    wake: Arc<dyn Fn() + Send + Sync>,
+    dragging: Option<Asset>,
 }
 
 impl OpenLibraryApp {
@@ -108,7 +115,14 @@ impl OpenLibraryApp {
         let thumbs_dir = data_dir.clone().unwrap_or_else(std::env::temp_dir).join("thumbs");
         let loader = ThumbLoader::new(thumbs_dir, 6, wake.clone());
         let engines = Arc::new(EngineCache::load(&data_dir.clone().unwrap_or_else(std::env::temp_dir).join("engines.json")));
-        let (jobs, found) = spawn_reader(engines.clone(), wake);
+        let (jobs, found) = spawn_reader(engines.clone(), wake.clone());
+        let skip: Vec<u32> = settings
+            .data
+            .get(BRIDGE_SKIP)
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|y| y.as_u64()).filter_map(|y| u32::try_from(y).ok()).collect())
+            .unwrap_or_default();
+        let max = MaxSession::start(data_dir.as_deref(), &skip, wake.clone());
         let tab = settings.current_library();
         let mut app = Self {
             lang,
@@ -134,6 +148,9 @@ impl OpenLibraryApp {
             found,
             asked: HashSet::new(),
             files: HashMap::new(),
+            max,
+            wake,
+            dragging: None,
         };
         app.open_tab(tab, &cc.egui_ctx);
         app
@@ -403,7 +420,11 @@ impl OpenLibraryApp {
 
     /// Draws one card; true when it was clicked.
     fn card(&mut self, ui: &mut egui::Ui, asset: &Asset, size: Vec2) -> bool {
-        let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+        let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+        if response.drag_started() {
+            self.dragging = Some(asset.clone());
+        }
+        response.context_menu(|ui| self.merge_menu(ui, asset));
         if !ui.is_rect_visible(rect) {
             return false;
         }
@@ -454,6 +475,156 @@ impl OpenLibraryApp {
             painter.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(2.0, ACCENT), egui::StrokeKind::Inside);
         }
         response.clicked()
+    }
+
+    /// The menu of a model, for the 3ds Max of the last drop (or the only one open).
+    fn merge_menu(&mut self, ui: &mut egui::Ui, asset: &Asset) {
+        let Some(info) = self.max.target() else {
+            ui.label(self.t(Text::NoMax));
+            return;
+        };
+        ui.label(egui::RichText::new(format!("3ds Max {}", info.year)).small().weak());
+        if ui.button(self.t(Text::MenuPlace)).clicked() {
+            self.merge(asset, &info, MergeKind::Place);
+            ui.close();
+        }
+        let proxy_ok = matches!(info.engine, Engine::Corona | Engine::VRay);
+        let proxy_text = if proxy_ok { self.t(Text::MenuProxy) } else { self.t(Text::ProxyNeedsEngine) };
+        if ui.add_enabled(proxy_ok, egui::Button::new(proxy_text)).clicked() {
+            self.merge(asset, &info, MergeKind::Proxy);
+            ui.close();
+        }
+        if ui.button(self.t(Text::MenuOrigin)).clicked() {
+            self.merge(asset, &info, MergeKind::Origin);
+            ui.close();
+        }
+    }
+
+    /// Sends a model to a 3ds Max; what happens is told in the status bar.
+    fn merge(&mut self, asset: &Asset, info: &MaxInfo, kind: MergeKind) {
+        if info.busy {
+            self.notice = Some(self.t(Text::Busy).to_string());
+            return;
+        }
+        let proxy_ok = matches!(info.engine, Engine::Corona | Engine::VRay);
+        let kind = if kind == MergeKind::Proxy && !proxy_ok { MergeKind::Place } else { kind };
+        let imp = self.settings.data.get("import").cloned().unwrap_or_default();
+        let roots = self.index.as_ref().map(|i| i.roots.clone()).unwrap_or_default();
+        let local = self.data_dir.clone().unwrap_or_else(std::env::temp_dir).join("proxies");
+        match merge_request(asset, info, kind, &imp, &roots, &self.engines, &local) {
+            Err(_) => self.notice = Some(fill(self.t(Text::NoFile), &[("name", &asset.name)])),
+            Ok((request, moved)) => {
+                let mut notice = if kind == MergeKind::Origin { String::new() } else { fill(self.t(Text::Placing), &[("name", &asset.name)]) };
+                if let Some(folder) = moved {
+                    notice = format!("{notice} · {}", fill(self.t(Text::ProxyLocal), &[("folder", &folder.display())]));
+                }
+                self.notice = (!notice.is_empty()).then_some(notice);
+                self.max.send_merge(request, &asset.name, info, self.lang, self.wake.clone());
+            }
+        }
+    }
+
+    /// While a card is dragged: its thumbnail under the pointer; on release over a 3ds Max, the merge.
+    fn drag(&mut self, ctx: &egui::Context) {
+        let Some(asset) = self.dragging.clone() else { return };
+        let (released, pointer, modifiers) = ctx.input(|i| (i.pointer.any_released(), i.pointer.latest_pos(), i.modifiers));
+        if !released {
+            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+            if let (Some(pos), Some(Some(texture))) = (pointer, self.textures.get(&asset.key())) {
+                let size = texture.size_vec2() * (96.0 / texture.size_vec2().max_elem());
+                let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("openlibrary-drag")));
+                let uv = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                painter.image(texture.id(), Rect::from_min_size(pos + Vec2::splat(12.0), size), uv, Color32::from_white_alpha(200));
+            }
+            return;
+        }
+        self.dragging = None;
+        let kind = if modifiers.shift {
+            MergeKind::Proxy
+        } else if modifiers.ctrl {
+            MergeKind::Origin
+        } else {
+            MergeKind::Place
+        };
+        if crate::platform::process_under_cursor() == Some(std::process::id()) {
+            return; // dropped back on OpenLibrary
+        }
+        match self.max.under_cursor() {
+            Some(info) => self.merge(&asset, &info, kind),
+            None => {
+                let text = if self.max.maxes().is_empty() { Text::NoMax } else { Text::DropOnMax };
+                self.notice = Some(self.t(text).to_string());
+            }
+        }
+    }
+
+    /// The bridge prompt when the app opens: install it where it is missing, update it where it is old.
+    fn bridge_prompt(&mut self, ctx: &egui::Context) {
+        let Some((missing, old)) = self.max.prompt.clone() else { return };
+        let names = |list: &[crate::bridge_install::MaxTarget]| list.iter().map(|t| t.label()).collect::<Vec<_>>().join(", ");
+        let action = match (missing.is_empty(), old.is_empty()) {
+            (false, false) => Text::InstallUpdate,
+            (true, false) => Text::Update,
+            _ => Text::Install,
+        };
+        let mut choice = None;
+        let window = egui::Window::new("OpenLibrary").collapsible(false).resizable(false);
+        window.anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO).show(ctx, |ui| {
+            ui.set_max_width(420.0);
+            if !old.is_empty() {
+                ui.label(fill(self.t(Text::BridgeOld), &[("maxes", &names(&old))]));
+            }
+            if !missing.is_empty() {
+                ui.label(fill(self.t(Text::BridgeMissing), &[("maxes", &names(&missing))]));
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button(egui::RichText::new(self.t(action)).strong()).clicked() {
+                    choice = Some(0);
+                }
+                if ui.button(self.t(Text::Later)).clicked() {
+                    choice = Some(1);
+                }
+                if !missing.is_empty() && ui.button(self.t(Text::DontAskAgain)).clicked() {
+                    choice = Some(2);
+                }
+            });
+        });
+        match choice {
+            Some(0) => {
+                let all: Vec<_> = old.iter().chain(&missing).cloned().collect();
+                self.notice = Some(self.max.install(&all, self.lang));
+                self.max.prompt = None;
+            }
+            Some(1) => self.max.prompt = None,
+            Some(2) => {
+                let mut years: Vec<serde_json::Value> = self.settings.data.get(BRIDGE_SKIP).and_then(|v| v.as_array()).cloned().unwrap_or_default();
+                years.extend(missing.iter().filter_map(|t| t.year).map(serde_json::Value::from));
+                self.settings.data.insert(BRIDGE_SKIP.into(), years.into());
+                if let Err(error) = self.settings.save() {
+                    self.notice = Some(fill(self.t(Text::SettingsError), &[("error", &error)]));
+                }
+                self.max.prompt = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// The right of the status bar: the 3ds Max this app talks to, and how to drag.
+    fn connection_text(&self) -> String {
+        match self.max.target() {
+            None => self.t(Text::NoMax).to_string(),
+            Some(info) => {
+                let engine = match info.engine {
+                    Engine::Corona => "Corona",
+                    Engine::VRay => "V-Ray",
+                    Engine::FStorm => "FStorm",
+                    Engine::Other => self.t(Text::EngineOther),
+                };
+                let max = format!("3ds Max {}", info.year);
+                format!("{} · {}", fill(self.t(Text::Connected), &[("max", &max), ("engine", &engine)]), self.t(Text::DragHint))
+            }
+        }
     }
 
     fn inspector(&mut self, ui: &mut egui::Ui) {
@@ -583,6 +754,9 @@ impl eframe::App for OpenLibraryApp {
         self.take_snapshots();
         self.take_loaded(&ctx);
         self.refresh_shown();
+        for done in self.max.poll() {
+            self.notice = Some(done.text);
+        }
         egui::Panel::top("top").show(ui, |ui| {
             ui.add_space(4.0);
             self.top_bar(ui);
@@ -598,7 +772,12 @@ impl eframe::App for OpenLibraryApp {
             } else {
                 fill(self.t(Text::Models), &[("count", &self.shown.len())])
             };
-            ui.label(egui::RichText::new(text).small());
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(text).small());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new(self.connection_text()).small().weak());
+                });
+            });
         });
         if self.tab_kind() == "models" && self.index.is_some() {
             egui::Panel::left("tree").resizable(true).default_size(240.0).show(ui, |ui| self.tree(ui));
@@ -607,6 +786,8 @@ impl eframe::App for OpenLibraryApp {
             egui::Panel::right("inspector").resizable(true).default_size(300.0).show(ui, |ui| self.inspector(ui));
         }
         egui::CentralPanel::default().show(ui, |ui| self.gallery(ui));
+        self.drag(&ctx);
+        self.bridge_prompt(&ctx);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

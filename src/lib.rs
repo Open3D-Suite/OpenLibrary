@@ -4,8 +4,11 @@
 //! What the program does lives here, where the tests reach it; `main.rs` only reads the arguments.
 
 pub mod app;
+pub mod bridge_install;
 pub mod library;
+pub mod max_session;
 pub mod maxfile;
+pub mod maxlink;
 pub mod open3d_settings;
 pub mod platform;
 pub mod settings;
