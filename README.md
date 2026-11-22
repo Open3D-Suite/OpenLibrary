@@ -1,8 +1,9 @@
 # OpenLibrary
 
-OpenLibrary is a library of 3D models, materials and textures for 3ds Max, with Corona and V-Ray: browse your own folders with previews, drag a model or a material into the scene, and catalogue new downloads in a click. A single Windows program, nothing
-else to install, no account. Part of the [Open3D](https://github.com/carlesllavata/Open3D) suite of
-open-source tools for 3D work.
+OpenLibrary is a library of 3D models, materials and textures for 3ds Max, with Corona and V-Ray: browse
+your own folders with previews, drag a model or a material into the scene, and catalogue new downloads in a
+click. A single Windows program, nothing else to install, no account. Part of the
+[Open3D](https://github.com/carlesllavata/Open3D) suite of open-source tools for 3D work.
 
 **Version 0.1.0** – what changed in each version is in [`CHANGELOG.md`](CHANGELOG.md).
 
