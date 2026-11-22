@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! OpenExample: <one sentence: what it does for a 3D artist>.
+//! OpenLibrary: a library of 3D models, materials and textures for 3ds Max.
 //!
 //! What the program does lives here, where the tests reach it; `main.rs` only reads the arguments.
 
@@ -10,16 +10,16 @@ use open3d_settings::Language;
 use std::path::Path;
 
 /// The app's name, as the Open3D launcher shows it and as its folders are called.
-pub const APP: &str = "OpenExample";
+pub const APP: &str = "OpenLibrary";
 /// The version, from Cargo.toml.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// What `OpenExample --version` answers; the packager checks it (`version_answer` in tools/repo.toml).
+/// What `OpenLibrary --version` answers; the packager checks it (`version_answer` in tools/repo.toml).
 pub fn version_line() -> String {
     format!("{APP} {VERSION}")
 }
 
-/// Shows, in the language every Open3D app shares, where OpenExample keeps its files.
+/// Shows, in the language every Open3D app shares, where OpenLibrary keeps its files.
 pub fn run() {
     let language = open3d_settings::language(open3d_settings::settings_dir().as_deref());
     let settings = open3d_settings::app_settings_dir(APP);
@@ -44,17 +44,17 @@ mod tests {
 
     #[test]
     fn the_version_line_is_the_name_and_the_version_of_cargo_toml() {
-        assert_eq!(version_line(), format!("OpenExample {}", env!("CARGO_PKG_VERSION")));
+        assert_eq!(version_line(), format!("OpenLibrary {}", env!("CARGO_PKG_VERSION")));
     }
 
     #[test]
     fn the_text_names_both_folders_in_the_language_shown() {
-        let settings = PathBuf::from(r"S:\Open3D\OpenExample");
-        let data = PathBuf::from(r"D:\Open3D\OpenExample");
+        let settings = PathBuf::from(r"S:\Open3D\OpenLibrary");
+        let data = PathBuf::from(r"D:\Open3D\OpenLibrary");
         let english = describe(Language::English, Some(&settings), Some(&data));
-        assert_eq!(english, "Language: English\nSettings: S:\\Open3D\\OpenExample\nOther files: D:\\Open3D\\OpenExample");
+        assert_eq!(english, "Language: English\nSettings: S:\\Open3D\\OpenLibrary\nOther files: D:\\Open3D\\OpenLibrary");
         let spanish = describe(Language::Spanish, Some(&settings), Some(&data));
-        assert_eq!(spanish, "Idioma: español\nAjustes: S:\\Open3D\\OpenExample\nOtros archivos: D:\\Open3D\\OpenExample");
+        assert_eq!(spanish, "Idioma: español\nAjustes: S:\\Open3D\\OpenLibrary\nOtros archivos: D:\\Open3D\\OpenLibrary");
     }
 
     #[test]
@@ -66,6 +66,6 @@ mod tests {
     #[test]
     fn the_folders_are_named_after_the_app() {
         let dir = open3d_settings::settings_dir_from(Some("S:\\Open3D".into()), None).map(|dir| dir.join(APP));
-        assert_eq!(dir, Some(PathBuf::from(r"S:\Open3D\OpenExample")));
+        assert_eq!(dir, Some(PathBuf::from(r"S:\Open3D\OpenLibrary")));
     }
 }

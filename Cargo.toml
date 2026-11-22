@@ -1,19 +1,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [package]
-name = "openexample"
+name = "openlibrary"
 version = "0.1.0"
 edition = "2024"
-description = "<One sentence: what OpenExample does for a 3D artist>"
+description = "A library of 3D models, materials and textures for 3ds Max"
 license = "GPL-3.0-or-later"
 publish = false
 build = "build.rs"
 
 [lib]
-name = "openexample"
+name = "openlibrary"
 path = "src/lib.rs"
 
 [[bin]]
-name = "OpenExample"
+name = "OpenLibrary"
 path = "src/main.rs"
 
 [dependencies]

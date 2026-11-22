@@ -1,7 +1,6 @@
 # The checks of this repository on every push and pull request to main: tools\check.ps1, the same
-# command as on a computer. Each starter is made into a new app's repository and its own checks run
-# there: the Rust program is built and tested, the Python plug-in tested, the C++ plug-in's library built
-# and tested (not the plug-in, which needs the 3ds Max SDK).
+# command as on a computer (format, lints, build and tests). What needs 3ds Max, the network or a long
+# time only runs with -Full, which is not run here.
 name: check
 
 on:
@@ -22,14 +21,12 @@ concurrency:
 jobs:
   check:
     runs-on: windows-latest
-    # The Rust starter builds from nothing, since nothing is cached.
+    # Clippy and the tests build everything from nothing, since nothing is cached.
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        # A 3ds Max plug-in runs on the Python of 3ds Max: 3.11 in 3ds Max 2025, the oldest supported,
-        # and 3.13 in 3ds Max 2027. The common tools need 3.11 or newer.
-        python: ["3.11", "3.13"]
+        python: ["3.14"]
     env:
       # tools\check.ps1 asks the py launcher first, and "py -3" would take the newest Python of the
       # runner instead of the one set up below. PY_PYTHON3 makes it take that one.
@@ -50,11 +47,9 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not $pin) { throw 'ruff.toml has no required-version' }
           python -I -m pip install --disable-pip-version-check "ruff$pin"
 
-      # The Rust toolchain of the runner: the Rust starter pins none.
+      # The Rust toolchain of the runner: this repository pins none.
       - name: Add rustfmt and clippy
         run: rustup component add rustfmt clippy
 
-      # The C++ tools are the runner's: clang-format from its LLVM, and MSVC, CMake and Ninja from its
-      # Visual Studio, which the C++ starter's build.ps1 finds with vswhere.
       - name: Check
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tools\check.ps1

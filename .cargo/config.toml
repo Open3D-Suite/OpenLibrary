@@ -2,6 +2,6 @@
 # .cargo/config.local.toml, which Git ignores.
 include = [{ path = "config.local.toml", optional = true }]
 
-# The Visual C++ runtime is linked into OpenExample.exe, so nothing has to be installed beside it.
+# The Visual C++ runtime is linked into OpenLibrary.exe, so nothing has to be installed beside it.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
