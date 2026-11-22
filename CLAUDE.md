@@ -40,6 +40,8 @@ Update it in the same commit as a change that makes it old.
 - `src/main.rs`: reads the arguments: `--version`, or the program itself.
 - `src/lib.rs`: what the program does, where the tests reach it: its name, its version, the text it shows.
 - `src/platform.rs`: every call to Windows but one.
+- `src/maxfile.rs`: reads a `.max` without 3ds Max (compound file): its renderer (`detect_engine`), the viewport
+  capture 3ds Max saved in it (`embedded_thumbnail`) and its external files (`read_assets`).
 - `src/open3d_settings.rs`: what every Open3D app shares, the language and the folders of each app, with
   the cases its tests read (`src/open3d_settings_cases.txt`).
 - `build.rs`: the exe's icon (`assets/icon.ico`) and file properties.
