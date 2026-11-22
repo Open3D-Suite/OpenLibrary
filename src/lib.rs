@@ -8,6 +8,7 @@ pub mod maxfile;
 pub mod open3d_settings;
 pub mod platform;
 pub mod settings;
+pub mod texts;
 
 use open3d_settings::Language;
 use std::path::Path;

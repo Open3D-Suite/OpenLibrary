@@ -48,6 +48,8 @@ Update it in the same commit as a change that makes it old.
 - `src/settings.rs`: OpenLibrary's `settings.json`, kept as JSON values over `defaults()` so unknown keys survive;
   `save` merges with what another copy saved and keeps a `.bak`; `carry_over_old_settings` copies the Python
   version's file once.
+- `src/texts.rs`: every text of the interface as a `Text`, English and Spanish side by side (`Text::get`), with
+  `{name}` places filled by `fill`; its test fails on a text without Spanish or with other places.
 - `src/open3d_settings.rs`: what every Open3D app shares, the language and the folders of each app, with
   the cases its tests read (`src/open3d_settings_cases.txt`).
 - `build.rs`: the exe's icon (`assets/icon.ico`) and file properties.
