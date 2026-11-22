@@ -56,6 +56,34 @@ texts! {
     OpenFolder => "Open folder", "Abrir carpeta";
     CarriedOver => "Your settings from the previous OpenLibrary were brought over.",
         "Se han traído los ajustes de la OpenLibrary anterior.";
+    BridgeMissing => "{maxes} has no bridge: without it, models cannot be dragged from OpenLibrary into the scene.",
+        "{maxes} no tiene el puente: sin él no se pueden arrastrar modelos de OpenLibrary a la escena.";
+    BridgeOld => "The bridge of {maxes} is from an earlier OpenLibrary. Update it, so that dragging into the scene works.",
+        "El puente de {maxes} es de una OpenLibrary anterior. Actualízalo para que arrastrar a la escena funcione.";
+    Install => "Install", "Instalar";
+    Update => "Update", "Actualizar";
+    InstallUpdate => "Install and update", "Instalar y actualizar";
+    Later => "Later", "Más tarde";
+    DontAskAgain => "Do not ask again", "No volver a preguntar";
+    BridgeDone => "Bridge ready in {maxes}. If 3ds Max is open, restart it.", "Puente listo en {maxes}. Si 3ds Max está abierto, reinícialo.";
+    BridgeError => "The bridge could not be installed in {max}: {error}", "No se pudo instalar el puente en {max}: {error}";
+    Connected => "Connected to {max} · {engine}", "Conectado a {max} · {engine}";
+    NoMax => "No 3ds Max with the bridge is open.", "No hay ningún 3ds Max abierto con el puente.";
+    DropOnMax => "Drop the model on the window of a 3ds Max with the bridge.", "Suelta el modelo sobre la ventana de un 3ds Max con el puente.";
+    DragHint => "Drag to 3ds Max · Shift: as proxy · Ctrl: in its original place", "Arrastra a 3ds Max · Shift: como proxy · Ctrl: en su posición original";
+    Placing => "{name}: in 3ds Max, click to place · the wheel turns 90° · right button or Esc ends",
+        "{name}: en 3ds Max, clic para colocar · la rueda gira 90° · botón derecho o Esc termina";
+    Merged => "{name}: {count} objects in {max}", "{name}: {count} objetos en {max}";
+    MergeFailed => "{name} could not be brought in: {error}", "No se pudo traer {name}: {error}";
+    OtherEngine => "{name} has no {engine} version: the {used} one came in.", "{name} no tiene versión de {engine}: ha entrado la de {used}.";
+    NoFile => "{name} has no .max file.", "{name} no tiene archivo .max.";
+    Busy => "3ds Max is busy with the command before.", "3ds Max está ocupado con la orden anterior.";
+    MenuPlace => "Merge and place", "Merge and place";
+    MenuProxy => "Merge as proxy", "Merge as proxy";
+    MenuOrigin => "Merge in its original place", "Merge en su posición original";
+    ProxyNeedsEngine => "Merge as proxy (needs Corona or V-Ray)", "Merge as proxy (necesita Corona o V-Ray)";
+    ProxyLocal => "The proxy could not be written beside the model, so it went to this computer: {folder}",
+        "No se pudo escribir el proxy junto al modelo, así que se ha guardado en este ordenador: {folder}";
     SettingsError => "The settings could not be saved: {error}", "No se pudieron guardar los ajustes: {error}";
 }
 

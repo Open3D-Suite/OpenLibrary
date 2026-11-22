@@ -41,6 +41,8 @@ Update it in the same commit as a change that makes it old.
 - `src/lib.rs`: the name, the version and `run`, which opens the window.
 - `src/app.rs`: the window (eframe/egui): tabs and search, folder tree, gallery, selected model; it only draws
   what the other modules give it. Scans, thumbnails and `.max` reading run on threads of their own.
+- `src/max_session.rs`: the window's side of 3ds Max: `MaxSession` (discovery every 3 s, the bridge prompt,
+  `install`, `send_merge` on a thread) and `merge_request`, which builds a merge from an asset and the settings.
 - `src/thumbs.rs`: `ThumbLoader`, thumbnails on threads, last asked first, cached as JPEG in `thumbs` of the
   data folder (`cache_file`); a `.max` without preview gives its viewport capture.
 - `src/platform.rs`: every call to Windows but one.
