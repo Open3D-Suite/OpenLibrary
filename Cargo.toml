@@ -19,6 +19,8 @@ path = "src/main.rs"
 [dependencies]
 # open3d_settings.rs reads and writes settings.json with it.
 serde_json = "1"
+# The caches and the app's settings are JSON, read and written through these types.
+serde = { version = "1", features = ["derive"] }
 
 # build.rs gives the exe its icon and its file version, which the packager checks.
 [build-dependencies]

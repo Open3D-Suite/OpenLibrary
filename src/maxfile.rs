@@ -254,7 +254,8 @@ impl<R: Read + Seek> CompoundFile<R> {
 // ----------------------------------------------------------------------------------------------------
 
 /// The renderer of a `.max` file, as far as its classes tell.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Engine {
     Corona,
     VRay,
