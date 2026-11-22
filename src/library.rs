@@ -241,7 +241,7 @@ pub struct ScanStats {
 /// The first time every folder is listed. Afterwards the cache loads at once and a scan lists again only
 /// the folders whose modification time changed (Windows and NAS boxes change it when something inside is
 /// created, deleted or renamed); for the rest one `stat` is enough.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct LibraryIndex {
     pub roots: Vec<PathBuf>,
     records: HashMap<String, Record>,
@@ -280,6 +280,12 @@ impl LibraryIndex {
     /// Reads the folders again: only those that changed when `incremental`. `cancelled` is asked between
     /// folders; a cancelled scan keeps what the index had.
     pub fn scan(&mut self, incremental: bool, cancelled: &dyn Fn() -> bool) -> &mut Self {
+        self.scan_reporting(incremental, cancelled, &mut |_, _| {})
+    }
+
+    /// [`Self::scan`], telling `progress` every 25 folders how many folders and models it has seen.
+    pub fn scan_reporting(&mut self, incremental: bool, cancelled: &dyn Fn() -> bool, progress: &mut dyn FnMut(usize, usize)) -> &mut Self {
+        let mut models = 0;
         let old = if incremental { std::mem::take(&mut self.records) } else { HashMap::new() };
         let mut new: HashMap<String, Record> = HashMap::new();
         self.stats = ScanStats::default();
@@ -306,7 +312,11 @@ impl LibraryIndex {
                     }
                 };
                 stack.extend(record.subdirs.iter().rev().cloned());
+                models += record.assets.len();
                 new.insert(key, record);
+                if new.len().is_multiple_of(25) {
+                    progress(new.len(), models);
+                }
             }
         }
         if was_cancelled {
@@ -611,6 +621,18 @@ mod tests {
         assert!(names(&again.assets()).contains(&"New".to_string()));
 
         assert!(!LibraryIndex::new(&[chairs]).load(&cache)); // other roots: another cache
+    }
+
+    #[test]
+    fn a_scan_tells_its_progress() {
+        let lib = library("progress");
+        for i in 0..30 {
+            touch(&lib.0.join(format!("Many/F{i}/M{i}.max")));
+        }
+        let mut seen = Vec::new();
+        LibraryIndex::new(std::slice::from_ref(&lib.0)).scan_reporting(true, &never, &mut |folders, models| seen.push((folders, models)));
+        assert_eq!(seen.len(), 1); // 40 folders: told once, at 25
+        assert_eq!(seen[0].0, 25);
     }
 
     #[test]

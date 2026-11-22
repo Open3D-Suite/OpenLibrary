@@ -38,10 +38,15 @@ Update it in the same commit as a change that makes it old.
 ## Layout
 
 - `src/main.rs`: reads the arguments: `--version`, or the program itself.
-- `src/lib.rs`: what the program does, where the tests reach it: its name, its version, the text it shows.
+- `src/lib.rs`: the name, the version and `run`, which opens the window.
+- `src/app.rs`: the window (eframe/egui): tabs and search, folder tree, gallery, selected model; it only draws
+  what the other modules give it. Scans, thumbnails and `.max` reading run on threads of their own.
+- `src/thumbs.rs`: `ThumbLoader`, thumbnails on threads, last asked first, cached as JPEG in `thumbs` of the
+  data folder (`cache_file`); a `.max` without preview gives its viewport capture.
 - `src/platform.rs`: every call to Windows but one.
 - `src/maxfile.rs`: reads a `.max` without 3ds Max (compound file): its renderer (`detect_engine`), the viewport
-  capture 3ds Max saved in it (`embedded_thumbnail`) and its external files (`read_assets`).
+  capture 3ds Max saved in it (`embedded_thumbnail`) and its external files (`read_assets`); `EngineCache`
+  keeps each file's renderer by date and size in `engines.json` of the data folder.
 - `src/library.rs`: the index of a library (`LibraryIndex`): assets by engine suffix (`split_engine_suffix`), their
   previews, a cache per set of roots (`cache_name`) and a scan that lists again only the folders whose date changed;
   `hidden_folders` for the folders not shown.

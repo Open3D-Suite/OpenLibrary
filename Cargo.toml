@@ -21,6 +21,10 @@ path = "src/main.rs"
 serde_json = "1"
 # The caches and the app's settings are JSON, read and written through these types.
 serde = { version = "1", features = ["derive"] }
+# The window: egui, drawn with OpenGL through eframe.
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit"] }
+# Decodes previews and viewport captures, and writes the thumbnail cache.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp", "webp", "tiff"] }
 
 # build.rs gives the exe its icon and its file version, which the packager checks.
 [build-dependencies]

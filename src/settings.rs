@@ -127,7 +127,9 @@ pub fn migrate_libraries(libraries: Option<&Value>) -> Value {
 
 fn read(path: &Path) -> Result<Map<String, Value>, String> {
     let bytes = fs::read(path).map_err(|e| e.to_string())?;
-    let Value::Object(data) = serde_json::from_slice::<Value>(&bytes).map_err(|e| e.to_string())? else {
+    // A file saved by Notepad or PowerShell may start with a byte order mark: it is not part of the JSON.
+    let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
+    let Value::Object(data) = serde_json::from_slice::<Value>(bytes).map_err(|e| e.to_string())? else {
         return Err("not a JSON object".into());
     };
     let mut data = merge(defaults(), data);
@@ -330,6 +332,14 @@ mod tests {
         assert_eq!(disk.data["libraries"][0]["paths"], json!(["X:\\Models"]));
         assert_eq!(disk.data["thumb_size"], 222);
         assert_eq!(second.data["libraries"][0]["paths"], json!(["X:\\Models"]));
+    }
+
+    #[test]
+    fn a_file_with_a_byte_order_mark_is_read() {
+        let dir = Scratch::new("bom");
+        let path = dir.0.join(FILE_NAME);
+        fs::write(&path, b"\xEF\xBB\xBF{\"thumb_size\": 210}").unwrap();
+        assert_eq!(Settings::load(&path).data["thumb_size"], 210);
     }
 
     #[test]

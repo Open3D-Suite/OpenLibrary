@@ -482,6 +482,65 @@ pub fn read_assets(path: &Path) -> Vec<Asset> {
         .unwrap_or_default()
 }
 
+/// The renderer of each `.max` read so far, by its path, date and size, so that a network drive is not read
+/// again. It lives in the app's data folder.
+pub struct EngineCache {
+    path: std::path::PathBuf,
+    data: std::sync::Mutex<std::collections::HashMap<String, (u64, u64, Engine)>>,
+    dirty: std::sync::atomic::AtomicBool,
+}
+
+fn file_stamp(path: &Path) -> Option<(u64, u64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    let secs = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    Some((secs, meta.len()))
+}
+
+impl EngineCache {
+    pub fn load(path: &Path) -> Self {
+        let data = std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        Self { path: path.to_path_buf(), data: std::sync::Mutex::new(data), dirty: false.into() }
+    }
+
+    /// The renderer known for a file, if it has not changed since it was read.
+    pub fn get(&self, file: &Path) -> Option<Engine> {
+        let (secs, size) = file_stamp(file)?;
+        let data = self.data.lock().ok()?;
+        data.get(&crate::library::norm_key(file)).filter(|r| r.0 == secs && r.1 == size).map(|r| r.2)
+    }
+
+    /// The renderer of a file: known, or read now and kept.
+    pub fn detect(&self, file: &Path) -> Engine {
+        if let Some(engine) = self.get(file) {
+            return engine;
+        }
+        let Some((secs, size)) = file_stamp(file) else { return Engine::Other };
+        let engine = detect_engine(file);
+        if let Ok(mut data) = self.data.lock() {
+            data.insert(crate::library::norm_key(file), (secs, size, engine));
+            self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        engine
+    }
+
+    /// Writes the cache if it learnt something: whole into a new file that then takes the old one's place.
+    pub fn save(&self) -> std::io::Result<()> {
+        if !self.dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            return Ok(());
+        }
+        let bytes = {
+            let data = self.data.lock().map_err(|_| std::io::Error::other("engine cache lock"))?;
+            serde_json::to_vec(&*data).map_err(std::io::Error::other)?
+        };
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = self.path.with_extension("tmp");
+        std::fs::write(&tmp, bytes)?;
+        std::fs::rename(&tmp, &self.path)
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod testing {
     //! A writer of small compound files, so that the reader is tested without real scenes.
@@ -773,6 +832,25 @@ mod tests {
                 Asset { kind: "Photometric".into(), stored: "a.ies".into(), resolved: String::new() },
             ]
         );
+    }
+
+    #[test]
+    fn the_engine_cache_remembers_until_the_file_changes() {
+        let dir = std::env::temp_dir().join(format!("openlibrary-enginecache-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("sofa.max");
+        std::fs::write(&file, compound(&[("ClassDirectory3", &utf16("CoronaPhysicalMtl"))])).unwrap();
+        let cache_path = dir.join("engines.json");
+        let cache = EngineCache::load(&cache_path);
+        assert_eq!(cache.get(&file), None);
+        assert_eq!(cache.detect(&file), Engine::Corona);
+        cache.save().unwrap();
+        let again = EngineCache::load(&cache_path);
+        assert_eq!(again.get(&file), Some(Engine::Corona));
+        std::fs::write(&file, compound(&[("ClassDirectory3", &utf16("VRayMtl")), ("Scene", &[0u8; 5000])])).unwrap();
+        assert_eq!(again.get(&file), None); // another size: read again
+        assert_eq!(again.detect(&file), Engine::VRay);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

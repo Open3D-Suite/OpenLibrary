@@ -33,7 +33,9 @@ macro_rules! texts {
 texts! {
     Search => "Search the library…", "Buscar en la biblioteca…";
     AllFolders => "All", "Todo";
-    Scanning => "Reading the library: {folders} folders, {assets} models…", "Leyendo la biblioteca: {folders} carpetas, {assets} modelos…";
+    Scanning => "Reading the library…", "Leyendo la biblioteca…";
+    ScanProgress => "Reading the library: {folders} folders, {models} models so far…",
+        "Leyendo la biblioteca: {folders} carpetas, {models} modelos por ahora…";
     Models => "{count} models", "{count} modelos";
     NoFolders => "This tab has no folders yet. Add them in the settings of the Python version for now.",
         "Esta pestaña aún no tiene carpetas. Por ahora, añádelas en los ajustes de la versión Python.";
