@@ -3,14 +3,20 @@
 //! the selected model on the right. What it shows comes from the modules of the library; this file only draws
 //! it and passes the clicks on.
 
+mod work;
+
 use crate::library::{Asset, LibraryIndex, hidden_folders, norm_key};
 use crate::max_session::{MaxSession, MergeKind, merge_request};
-use crate::maxfile::{self, Engine, EngineCache};
+use crate::maxfile::{Engine, EngineCache};
 use crate::maxlink::MaxInfo;
+use crate::missing;
+use crate::modelstats::StatsCache;
 use crate::open3d_settings::{self, Language};
 use crate::settings::{self, Settings};
 use crate::texts::{Text, fill};
 use crate::thumbs::ThumbLoader;
+use crate::ui_catalog::CatalogWindow;
+use crate::ui_missing::MissingWindow;
 use eframe::egui::{self, Color32, CornerRadius, Rect, Sense, Stroke, TextureHandle, TextureOptions, Vec2};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -46,22 +52,9 @@ enum Found {
 
 /// The files of one `.max` that are not where it says: (all of them, missing).
 fn count_missing(max: &Path) -> (usize, usize) {
-    let base = max.parent().unwrap_or(Path::new(""));
-    let mut seen = HashSet::new();
-    let mut missing = 0;
-    for asset in maxfile::read_assets(max) {
-        if Path::new(&asset.stored).extension().is_none() || !seen.insert(asset.stored.to_lowercase()) {
-            continue;
-        }
-        let stored = Path::new(&asset.stored);
-        let found = (stored.is_absolute() && stored.is_file())
-            || (!stored.is_absolute() && base.join(stored).is_file())
-            || (!asset.resolved.is_empty() && Path::new(&asset.resolved).is_file());
-        if !found {
-            missing += 1;
-        }
-    }
-    (seen.len(), missing)
+    let externals = missing::externals(max);
+    let missing = externals.iter().filter(|e| e.state != missing::State::Found).count();
+    (externals.len(), missing)
 }
 
 pub struct OpenLibraryApp {
@@ -91,6 +84,11 @@ pub struct OpenLibraryApp {
     max: MaxSession,
     wake: Arc<dyn Fn() + Send + Sync>,
     dragging: Option<Asset>,
+    stats: StatsCache,
+    work: Option<work::Work>,
+    preview_ask: Option<Vec<work::PreviewJob>>,
+    missing: Option<MissingWindow>,
+    catalog: Option<CatalogWindow>,
 }
 
 impl OpenLibraryApp {
@@ -124,6 +122,7 @@ impl OpenLibraryApp {
             .unwrap_or_default();
         let max = MaxSession::start(data_dir.as_deref(), &skip, wake.clone());
         let tab = settings.current_library();
+        let stats = StatsCache::load(&data_dir.clone().unwrap_or_else(std::env::temp_dir).join("model_stats.json"));
         let mut app = Self {
             lang,
             settings,
@@ -151,6 +150,11 @@ impl OpenLibraryApp {
             max,
             wake,
             dragging: None,
+            stats,
+            work: None,
+            preview_ask: None,
+            missing: None,
+            catalog: None,
         };
         app.open_tab(tab, &cc.egui_ctx);
         app
@@ -310,6 +314,10 @@ impl OpenLibraryApp {
             if search.changed() {
                 self.shown_dirty = true;
             }
+            if self.tab_kind() == "models" {
+                ui.separator();
+                self.tools(ui);
+            }
         });
     }
 
@@ -424,7 +432,18 @@ impl OpenLibraryApp {
         if response.drag_started() {
             self.dragging = Some(asset.clone());
         }
-        response.context_menu(|ui| self.merge_menu(ui, asset));
+        response.context_menu(|ui| {
+            self.merge_menu(ui, asset);
+            ui.separator();
+            if ui.button(self.t(Text::MenuPreview)).clicked() {
+                self.ask_previews(std::slice::from_ref(asset));
+                ui.close();
+            }
+            if ui.button(self.t(Text::MenuData)).clicked() {
+                self.read_stats(std::slice::from_ref(asset));
+                ui.close();
+            }
+        });
         if !ui.is_rect_visible(rect) {
             return false;
         }
@@ -658,6 +677,7 @@ impl OpenLibraryApp {
             }
             ui.add_space(8.0);
             ui.label(egui::RichText::new(self.t(Text::ExternalFiles).to_uppercase()).small().strong());
+            let mut any_missing = false;
             for file in asset.all_files() {
                 match self.files.get(file) {
                     Some((total, 0)) => {
@@ -665,6 +685,7 @@ impl OpenLibraryApp {
                     }
                     Some((total, missing)) => {
                         ui.colored_label(ACCENT, fill(self.t(Text::FilesMissing), &[("missing", missing), ("count", total)]));
+                        any_missing = true;
                     }
                     None => {
                         if self.asked.insert(file.with_extension("files")) {
@@ -674,6 +695,11 @@ impl OpenLibraryApp {
                     }
                 }
             }
+            if any_missing && ui.button(self.t(Text::MissingOpen)).clicked() {
+                self.open_missing(&asset);
+            }
+            ui.add_space(8.0);
+            self.stats_panel(ui, &asset);
             ui.add_space(10.0);
             if ui.button(self.t(Text::OpenFolder)).clicked() {
                 let target = asset.any_file().map_or_else(|| asset.folder.clone(), Path::to_path_buf);
@@ -753,9 +779,13 @@ impl eframe::App for OpenLibraryApp {
         let ctx = ui.ctx().clone();
         self.take_snapshots();
         self.take_loaded(&ctx);
+        self.poll_work();
         self.refresh_shown();
         for done in self.max.poll() {
             self.notice = Some(done.text);
+        }
+        if self.catalogue(ui) {
+            return;
         }
         egui::Panel::top("top").show(ui, |ui| {
             ui.add_space(4.0);
@@ -763,7 +793,9 @@ impl eframe::App for OpenLibraryApp {
             ui.add_space(4.0);
         });
         egui::Panel::bottom("status").show(ui, |ui| {
-            let text = if let Some(notice) = &self.notice {
+            let text = if let Some(work) = self.work_text() {
+                work
+            } else if let Some(notice) = &self.notice {
                 notice.clone()
             } else if let (true, Some((folders, models))) = (self.scanning, self.progress) {
                 fill(self.t(Text::ScanProgress), &[("folders", &folders), ("models", &models)])
@@ -774,6 +806,9 @@ impl eframe::App for OpenLibraryApp {
             };
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new(text).small());
+                if self.work.is_some() && ui.small_button(self.t(Text::Cancel)).clicked() {
+                    self.cancel_work();
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new(self.connection_text()).small().weak());
                 });
@@ -788,6 +823,7 @@ impl eframe::App for OpenLibraryApp {
         egui::CentralPanel::default().show(ui, |ui| self.gallery(ui));
         self.drag(&ctx);
         self.bridge_prompt(&ctx);
+        self.windows(&ctx);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

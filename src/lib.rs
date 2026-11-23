@@ -20,6 +20,8 @@ pub mod settings;
 pub mod task;
 pub mod texts;
 pub mod thumbs;
+pub mod ui_catalog;
+pub mod ui_missing;
 
 /// The app's name, as the Open3D launcher shows it and as its folders are called.
 pub const APP: &str = "OpenLibrary";

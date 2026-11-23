@@ -41,6 +41,8 @@ Update it in the same commit as a change that makes it old.
 - `src/lib.rs`: the name, the version and `run`, which opens the window.
 - `src/app.rs`: the window (eframe/egui): tabs and search, folder tree, gallery, selected model; it only draws
   what the other modules give it. Scans, thumbnails and `.max` reading run on threads of their own.
+- `src/app/work.rs`: the window's batches (previews, model data) and what opens the two windows below.
+- `src/ui_catalog.rs`, `src/ui_missing.rs`: the windows to catalogue a download and for the missing files.
 - `src/max_session.rs`: the window's side of 3ds Max: `MaxSession` (discovery every 3 s, the bridge prompt,
   `install`, `send_merge` on a thread) and `merge_request`, which builds a merge from an asset and the settings.
 - `src/thumbs.rs`: `ThumbLoader`, thumbnails on threads, last asked first, cached as JPEG in `thumbs` of the
@@ -68,6 +70,16 @@ Update it in the same commit as a change that makes it old.
   `olib_core.ms` (every global starts with `olib_`), `config.py` (decrypts the token). It lives beside the
   Python version's bridge (`scripts\OpenLibrary`, ports 47800-47809, prefix `olb_`) without touching it.
   `bridge/tests` run without 3ds Max, with stand-ins for pymxs and Qt.
+- `src/maxbatch.rs`: jobs of a 3ds Max in the background (`3dsmaxbatch.exe`): `Job` is a function of
+  `bridge/olib_batch.ms` and a line per file; `run` reads its log, gives up a file that stalls and goes on with the
+  rest. It sets `OPENLIBRARY_BATCH`, with which an installed bridge does not start. `olib_batch.ms` travels in the
+  exe and is never installed in 3ds Max.
+- `src/modelstats.rs`: faces, vertices, displacement and animation of a model, kept in `model_stats.json`.
+- `src/missing.rs`: the external files a `.max` does not find (`externals`), and the job that changes or removes
+  their paths without opening it.
+- `src/archives.rs`: opens a download with the 7-Zip, NanaZip or UnRAR installed, or the `tar` of Windows; its parts
+  (`volumes`). `src/catalog.rs`: the proposed share (`guess`), the names and the copy (`Plan`).
+- `src/task.rs`: `Task`, work on a thread of its own; dropping it cancels it and waits.
 - `src/open3d_settings.rs`: what every Open3D app shares, the language and the folders of each app, with
   the cases its tests read (`src/open3d_settings_cases.txt`).
 - `build.rs`: the exe's icon (`assets/icon.ico`) and file properties.
