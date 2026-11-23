@@ -245,6 +245,20 @@ impl Settings {
         };
         (list("names"), list("paths").into_iter().map(PathBuf::from).collect())
     }
+
+    /// Hides the folders of this name in the tree.
+    pub fn hide_name(&mut self, name: &str) {
+        if self.hidden().0.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+            return;
+        }
+        let hidden = self.data.entry("hidden_folders").or_insert_with(|| json!({}));
+        if !hidden.is_object() {
+            *hidden = json!({});
+        }
+        if let Some(list) = hidden.as_object_mut().and_then(|h| h.entry("names").or_insert_with(|| json!([])).as_array_mut()) {
+            list.push(name.into());
+        }
+    }
 }
 
 /// Brings the settings of the Python version over, once: when there is no `settings.json` in `new_dir` yet and
@@ -266,6 +280,14 @@ pub fn carry_over_old_settings(old_dir: &Path, new_dir: &Path) -> Result<bool, S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hidden_name_is_added_once() {
+        let mut settings = Settings::load(Path::new("no-such-folder/settings.json"));
+        settings.hide_name("z-maps");
+        settings.hide_name("Z-Maps");
+        assert_eq!(settings.hidden().0.iter().filter(|n| n.eq_ignore_ascii_case("z-maps")).count(), 1);
+    }
 
     struct Scratch(PathBuf);
 
