@@ -9,6 +9,7 @@ source = { file = "Cargo.toml", pattern = '^version = "([^"]+)"' }
 places = [
     { file = "Cargo.lock", pattern = '^name = "openlibrary"\nversion = "([^"]+)"' },
     { file = "README.md", pattern = '^\*\*Version ([^*]+)\*\*' },
+    { file = "bridge/olib_bridge/__init__.py", pattern = '^VERSION = "([^"]+)"' },
 ]
 # Run after a new version is written: cargo looks Cargo.lock over, without touching the libraries.
 after_set = [["cargo", "update", "--workspace", "--offline"]]
@@ -26,6 +27,11 @@ run = ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D"
 [[check]]
 name = "cargo test"
 run = ["cargo", "test", "--workspace", "--locked"]
+
+[[check]]
+name = "bridge tests"
+# The bridge that runs inside 3ds Max, tested without it: pymxs and Qt are stood in for.
+run = ["python", "-m", "unittest", "discover", "-s", "bridge/tests", "-q"]
 
 [[check]]
 name = "ruff format"
