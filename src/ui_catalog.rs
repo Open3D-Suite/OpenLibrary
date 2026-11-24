@@ -4,6 +4,7 @@
 
 use crate::archives::{self, ArchiveError};
 use crate::catalog::{self, Bucket, Item, Plan, Request};
+use crate::foldertree::{self, Folder};
 use crate::library::{LibraryIndex, norm_key};
 use crate::maxbatch::{self, Outcome};
 use crate::maxfile::{self, Engine};
@@ -27,16 +28,6 @@ struct Entry {
     bucket: Bucket,
     engine: Engine,
     selected: bool,
-}
-
-/// A folder of the library in the tree of destinations.
-struct Folder {
-    path: PathBuf,
-    key: String,
-    name: String,
-    depth: usize,
-    parent: Option<usize>,
-    kids: bool,
 }
 
 enum Event {
@@ -105,54 +96,6 @@ fn file_name(path: &Path) -> String {
     path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
 }
 
-/// The folders of the library, depth first, without the hidden ones.
-fn folder_rows(index: Option<&LibraryIndex>, hidden: &HashSet<String>) -> Vec<Folder> {
-    fn add(out: &mut Vec<Folder>, children: &HashMap<String, Vec<PathBuf>>, path: &Path, depth: usize, parent: Option<usize>) {
-        let key = norm_key(path);
-        let kids = children.get(&key);
-        let at = out.len();
-        out.push(Folder { path: path.to_path_buf(), key, name: file_name(path), depth, parent, kids: kids.is_some() });
-        for kid in kids.into_iter().flatten() {
-            add(out, children, kid, depth + 1, Some(at));
-        }
-    }
-    let Some(index) = index else { return Vec::new() };
-    let mut children: HashMap<String, Vec<PathBuf>> = HashMap::new();
-    for folder in &index.folders {
-        let key = norm_key(folder);
-        if !hidden.contains(&key)
-            && !index.roots.iter().any(|r| norm_key(r) == key)
-            && let Some(parent) = folder.parent()
-        {
-            children.entry(norm_key(parent)).or_default().push(folder.clone());
-        }
-    }
-    let mut out = Vec::new();
-    for root in &index.roots {
-        add(&mut out, &children, root, 0, None);
-    }
-    out
-}
-
-/// The folders to draw: those whose parents are open, or, with a filter, those that match and their parents.
-fn visible(folders: &[Folder], expanded: &HashSet<String>, filter: &str) -> Vec<usize> {
-    let words: Vec<String> = filter.to_lowercase().split_whitespace().map(str::to_string).collect();
-    let mut show = vec![false; folders.len()];
-    for i in 0..folders.len() {
-        let folder = &folders[i];
-        if words.is_empty() {
-            show[i] = folder.parent.is_none_or(|p| show[p] && expanded.contains(&folders[p].key));
-        } else if words.iter().all(|w| folder.name.to_lowercase().contains(w.as_str())) {
-            let mut at = Some(i);
-            while let Some(n) = at {
-                show[n] = true;
-                at = folders[n].parent;
-            }
-        }
-    }
-    (0..folders.len()).filter(|&i| show[i]).collect()
-}
-
 fn read_items(folder: &Path) -> Vec<(Item, Engine)> {
     let engine = |item: &Item| {
         if item.is_max() { catalog::engine_of(&item.name, maxfile::detect_engine(&item.path)) } else { Engine::Other }
@@ -174,7 +117,7 @@ impl CatalogWindow {
         // a folder of this window alone: another copy of the app may be cataloguing too
         let tmp = data_dir.join("catalog").join(std::process::id().to_string());
         let _ = std::fs::remove_dir_all(&tmp); // what an earlier window of this process left
-        let folders = folder_rows(index, hidden);
+        let folders = index.map(|i| foldertree::rows(&i.roots, &i.folders, hidden)).unwrap_or_default();
         let mut expanded: HashSet<String> = folders.iter().filter(|f| f.parent.is_none()).map(|f| f.key.clone()).collect();
         let mut at = dest.and_then(|d| folders.iter().position(|f| f.key == norm_key(d)));
         while let Some(n) = at {
@@ -686,31 +629,9 @@ impl CatalogWindow {
     fn tree(&mut self, ui: &mut egui::Ui, height: f32) {
         let hint = self.t(Text::CatalogFindFolder);
         ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text(hint).desired_width(f32::INFINITY));
-        let rows = visible(&self.folders, &self.expanded, &self.filter);
-        let row = ui.spacing().interact_size.y;
-        let chosen = self.dest.as_deref().map(norm_key);
-        egui::ScrollArea::both().id_salt("catalog-tree").auto_shrink(false).max_height(height).show_rows(ui, row, rows.len(), |ui, range| {
-            for &i in &rows[range] {
-                let folder = &self.folders[i];
-                ui.horizontal(|ui| {
-                    ui.add_space(folder.depth as f32 * 14.0);
-                    let open = self.expanded.contains(&folder.key);
-                    if folder.kids {
-                        if ui.small_button(if open { "−" } else { "+" }).clicked() {
-                            if open {
-                                self.expanded.remove(&folder.key);
-                            } else {
-                                self.expanded.insert(folder.key.clone());
-                            }
-                        }
-                    } else {
-                        ui.add_space(18.0);
-                    }
-                    if ui.selectable_label(chosen.as_ref() == Some(&folder.key), &folder.name).clicked() {
-                        self.dest = Some(folder.path.clone());
-                    }
-                });
-            }
+        let filter = self.filter.clone();
+        ui.allocate_ui(Vec2::new(ui.available_width(), height), |ui| {
+            foldertree::show(ui, "catalog", &self.folders, &mut self.expanded, &filter, &mut self.dest);
         });
     }
 
@@ -722,19 +643,8 @@ impl CatalogWindow {
             self.status = fill(self.t(Text::CatalogSaveFailed), &[("error", &error)]);
             return;
         }
-        let key = norm_key(&path);
-        let parent_key = norm_key(&parent);
-        if let Some(at) = self.folders.iter().position(|f| f.key == parent_key)
-            && !self.folders.iter().any(|f| f.key == key)
-        {
-            let depth = self.folders[at].depth + 1;
-            self.folders[at].kids = true;
-            for folder in &mut self.folders {
-                folder.parent = folder.parent.map(|p| if p > at { p + 1 } else { p });
-            }
-            self.folders.insert(at + 1, Folder { path: path.clone(), key, name, depth, parent: Some(at), kids: false });
-            self.expanded.insert(parent_key);
-        }
+        foldertree::insert(&mut self.folders, &parent, &path);
+        self.expanded.insert(norm_key(&parent));
         self.filter.clear();
         self.dest = Some(path);
     }
@@ -912,32 +822,5 @@ impl Drop for CatalogWindow {
     fn drop(&mut self) {
         self.task = None; // stops the work before its folder goes
         let _ = std::fs::remove_dir_all(&self.tmp);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn tree() -> Vec<Folder> {
-        let mut index = LibraryIndex::new(&["S:\\Lib".into()]);
-        index.folders = vec!["S:\\Lib".into(), "S:\\Lib\\Chairs".into(), "S:\\Lib\\Chairs\\Oak".into(), "S:\\Lib\\z-maps".into()];
-        folder_rows(Some(&index), &HashSet::from([norm_key(Path::new("S:\\Lib\\z-maps"))]))
-    }
-
-    #[test]
-    fn the_tree_of_destinations_leaves_the_hidden_folders_out() {
-        let rows: Vec<(String, usize, bool)> = tree().into_iter().map(|f| (f.name, f.depth, f.kids)).collect();
-        assert_eq!(rows, [("Lib".to_string(), 0, true), ("Chairs".to_string(), 1, true), ("Oak".to_string(), 2, false)]);
-    }
-
-    #[test]
-    fn a_filter_shows_what_matches_and_where_it_is() {
-        let rows = tree();
-        let open = HashSet::from([rows[0].key.clone()]);
-        assert_eq!(visible(&rows, &open, ""), [0, 1]);
-        assert_eq!(visible(&rows, &open, "oak"), [0, 1, 2]);
-        assert_eq!(visible(&rows, &HashSet::new(), ""), [0]);
-        assert!(visible(&rows, &open, "nothing").is_empty());
     }
 }

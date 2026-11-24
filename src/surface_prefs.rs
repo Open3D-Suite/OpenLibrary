@@ -213,10 +213,8 @@ pub fn apply_materials(settings: &Settings, items: Vec<Value>) -> Value {
 pub fn add_textures(settings: &Settings, textures: &[Texture], size: [f64; 3], target: &str) -> Value {
     let role = option(settings, "role").and_then(Value::as_str).unwrap_or("auto");
     let files: Vec<String> = textures.iter().map(|t| text(&t.path)).collect();
-    let roles: Vec<&str> = files
-        .iter()
-        .map(|f| if role == "auto" { surfaces::guess_role(f.rsplit('\\').next().unwrap_or(f)) } else { role })
-        .collect();
+    let roles: Vec<&str> =
+        files.iter().map(|f| if role == "auto" { surfaces::guess_role(f.rsplit('\\').next().unwrap_or(f)) } else { role }).collect();
     let mapping = option(settings, "mapping").and_then(Value::as_str).unwrap_or("uv");
     json!({"files": files, "roles": roles, "engine": engine(settings), "mapping": mapping, "size": size, "target": target})
 }

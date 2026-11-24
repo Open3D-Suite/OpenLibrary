@@ -40,8 +40,6 @@ texts! {
     NoFolders => "This tab has no folders yet. Add them in the settings of the Python version for now.",
         "Esta pestaña aún no tiene carpetas. Por ahora, añádelas en los ajustes de la versión Python.";
     NoModels => "No models here.", "Aquí no hay modelos.";
-    NotModelsYet => "Materials, textures and interiors come in a later version.",
-        "Los materiales, las texturas y los interiores llegan en una versión posterior.";
     NoPreview => "no preview", "sin preview";
     Loading => "loading…", "cargando…";
     Versions => "Versions", "Versiones";
@@ -296,6 +294,124 @@ texts! {
         "Un 3ds Max en segundo plano está preparando los .max (un par de minutos)…";
     CatalogPrepareCancelled => "The 3ds Max in the background was stopped: look the .max files over.",
         "Se paró el 3ds Max en segundo plano: revisa los .max.";
+    SurfacesReading => "Reading the folders for the first time: {count} so far…",
+        "Leyendo las carpetas por primera vez: {count} por ahora…";
+    SurfacesShown => "{count} here",
+        "{count} aquí";
+    NoSurfaces => "Nothing here.",
+        "Aquí no hay nada.";
+    BridgeTooOld => "The bridge in this 3ds Max is older than this function: update it and restart 3ds Max.",
+        "El puente de este 3ds Max es anterior a esta función: actualízalo y reinicia 3ds Max.";
+    Sending => "{name}: sending to 3ds Max…",
+        "{name}: enviando a 3ds Max…";
+    SendFailed => "3ds Max could not do it: {error}",
+        "3ds Max no pudo hacerlo: {error}";
+    MaterialExists => "{name} is in the scene already. Use that one, or bring in a new one (called {name}_01)?",
+        "{name} ya está en la escena. ¿Le pongo el que ya hay o meto uno nuevo (se llamará {name}_01)?";
+    UseExisting => "Use the scene's",
+        "Usar el de la escena";
+    MakeNew => "Bring in a new one",
+        "Meter uno nuevo";
+    OptEngine => "Renderer",
+        "Motor";
+    EngineScene => "The scene's",
+        "El de la escena";
+    OptResolution => "Resolution",
+        "Resolución";
+    ResHighest => "Highest",
+        "La más alta";
+    ResLowest => "Lowest",
+        "La más baja";
+    OptDisplacement => "Displacement on",
+        "Desplazamiento activado";
+    OptBalls => "Show as balls",
+        "Ver como bolas";
+    OptOnlyLibraries => "Only .mat libraries",
+        "Solo bibliotecas .mat";
+    OptOnlySized => "Only with a known size",
+        "Solo con medida conocida";
+    OptRecent => "Newest first",
+        "Lo más nuevo primero";
+    OptRole => "Load as",
+        "Cargar como";
+    RoleAuto => "By its name",
+        "Según el nombre";
+    RoleColor => "Colour (sRGB)",
+        "Color (sRGB)";
+    RoleData => "Data (linear)",
+        "Datos (lineal)";
+    OptMapping => "Mapping",
+        "Mapeado";
+    MapUv => "The object's UV",
+        "UV del objeto";
+    OptLight => "Light",
+        "Luz";
+    LightDay => "Day",
+        "Día";
+    LightNight => "Night",
+        "Noche";
+    OptDepth => "Depth",
+        "Fondo";
+    DepthAuto => "Automatic",
+        "Automático";
+    HintMaterials => "Drag a material onto an object in 3ds Max to put it there, with the mapping and the size it has here, or onto the Slate editor. Select several (Ctrl, Shift) to take them to Slate at once.",
+        "Arrastra un material sobre un objeto de 3ds Max para ponérselo, con el mapeado y las medidas que tenga aquí, o sobre el editor Slate. Selecciona varios (Ctrl, Shift) para llevarlos a Slate a la vez.";
+    HintTextures => "Drag one or several textures onto the Slate editor to have them as maps, or onto an object to make it a quick material.",
+        "Arrastra una o varias texturas sobre el editor Slate para tenerlas como mapas, o sobre un objeto para crearle un material rápido.";
+    HintInteriors => "Drag a room onto a window (a plane or a box) in 3ds Max. Dropped where there is nothing, the window's plane is made with its size.",
+        "Arrastra una habitación sobre una ventana (plano o caja) de 3ds Max. Si sueltas en el vacío, se crea el plano de la ventana con su tamaño.";
+    LibraryHint => "A .mat library: to Slate go all its materials, to objects the first one, as they were saved.",
+        "Biblioteca .mat: a Slate van todos sus materiales y a los objetos el primero, tal como están guardados.";
+    TextureRole => "Its name says: {role}",
+        "Por el nombre: {role}";
+    RoomWindow => "Window of {width}×{height} cm",
+        "Ventana de {width}×{height} cm";
+    InteriorNoShader => "The wParallax shader (wParallax_SMP.osl) is not in the folders of this tab: add the folder that has it.",
+        "El shader de wParallax (wParallax_SMP.osl) no está en las carpetas de esta pestaña: añade la carpeta que lo trae.";
+    SizeSaved => "Size kept for this material",
+        "Medidas guardadas para este material";
+    SizeFromName => "Size told by its name or its maker",
+        "Medidas sacadas del nombre o del fabricante";
+    SizeUnknown => "Size not known: write it above and it is kept for this material",
+        "Medidas desconocidas: escríbelas arriba y se quedan guardadas para este material";
+    SizeForget => "Forget the size kept",
+        "Olvidar las medidas guardadas";
+    SizeToFolder => "Use this size in the folder (those without one)",
+        "Usar estas medidas en la carpeta (los que no tienen)";
+    SizeToFolderDone => "{size} given to {count} materials.",
+        "{size} puesto a {count} materiales.";
+    MapsToLoad => "Maps it would load",
+        "Mapas que se cargarían";
+    NotWired => "(not wired)",
+        "(no se conecta)";
+    Planks => "{count} loose planks: the first one is used.",
+        "{count} lamas sueltas: se usa la primera.";
+    MenuToSelection => "Apply to the selection in 3ds Max",
+        "Aplicar a la selección de 3ds Max";
+    MenuQuickMaterial => "Quick material on the selection in 3ds Max",
+        "Material rápido en la selección de 3ds Max";
+    MenuToSlate => "Put in the Slate editor",
+        "Poner en el editor Slate";
+    MenuWindow => "Make the window in 3ds Max",
+        "Crear la ventana en 3ds Max";
+    PutObjects => "{name} put on {count} objects.",
+        "{name} puesto a {count} objetos.";
+    PutAlsoSlate => "It is in the active Slate view too.",
+        "También está en la vista activa de Slate.";
+    PutLibrary => "The library has {count} materials: the others, with the Slate editor.",
+        "La biblioteca trae {count} materiales: los demás, con el editor Slate.";
+    PutWindow => "{name}: window made in 3ds Max (selected, to move it to its place).",
+        "{name}: ventana creada en 3ds Max (seleccionada para moverla a su sitio).";
+    PutSlate => "Nodes in the active Slate view: {count}.",
+        "Nodos en la vista activa de Slate: {count}.";
+    PutSlateFound => "In Slate. Already in the scene, and selected: {count}.",
+        "En Slate. Ya estaban en la escena y quedan seleccionados: {count}.";
+    PutNoSlate => "The Slate editor could not be opened in 3ds Max.",
+        "No se pudo abrir el editor Slate en 3ds Max.";
+    PutNothing => "No objects are selected in 3ds Max: select them, or use the Slate editor.",
+        "No hay objetos seleccionados en 3ds Max: selecciónalos o usa el editor Slate.";
+    PutNoWindow => "No objects are selected in 3ds Max: select the window, or make it.",
+        "No hay objetos seleccionados en 3ds Max: selecciona la ventana o créala.";
     SettingsError => "The settings could not be saved: {error}", "No se pudieron guardar los ajustes: {error}";
 }
 

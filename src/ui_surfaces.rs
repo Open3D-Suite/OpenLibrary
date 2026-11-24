@@ -272,6 +272,9 @@ impl SurfacePanel {
                 }
             }
         }
+        if self.textures.len() > crate::thumbs::IN_MEMORY {
+            self.textures.clear(); // those on screen come back from the cache
+        }
         for loaded in self.loader.poll() {
             let texture = loaded.image.map(|img| {
                 let size = [img.width() as usize, img.height() as usize];
@@ -350,8 +353,7 @@ impl SurfacePanel {
                 }
             },
             Surface::Texture(_) => {
-                let list: Vec<Texture> =
-                    items.iter().filter_map(|i| if let Surface::Texture(t) = i { Some((**t).clone()) } else { None }).collect();
+                let list: Vec<Texture> = items.iter().filter_map(|i| if let Surface::Texture(t) = i { Some((**t).clone()) } else { None }).collect();
                 ("add_textures", prefs::add_textures(settings, &list, self.size, target))
             }
             Surface::Material(m) if m.is_library() => {

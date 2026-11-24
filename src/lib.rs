@@ -7,6 +7,7 @@ pub mod app;
 pub mod archives;
 pub mod bridge_install;
 pub mod catalog;
+pub mod foldertree;
 pub mod interiors;
 pub mod library;
 pub mod max_session;
@@ -18,12 +19,14 @@ pub mod modelstats;
 pub mod open3d_settings;
 pub mod platform;
 pub mod settings;
+pub mod surface_prefs;
 pub mod surfaces;
 pub mod task;
 pub mod texts;
 pub mod thumbs;
 pub mod ui_catalog;
 pub mod ui_missing;
+pub mod ui_surfaces;
 
 /// The app's name, as the Open3D launcher shows it and as its folders are called.
 pub const APP: &str = "OpenLibrary";

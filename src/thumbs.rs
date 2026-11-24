@@ -17,6 +17,8 @@ use std::time::UNIX_EPOCH;
 
 /// The longest side of a thumbnail, in pixels.
 pub const THUMB_PX: u32 = 320;
+/// How many thumbnails a tab keeps in memory.
+pub const IN_MEMORY: usize = 1500;
 /// The grey behind a preview with transparency (a material ball cut out in a PNG).
 const BACKDROP: Rgba<u8> = Rgba([58, 61, 68, 255]);
 
