@@ -27,7 +27,7 @@ def _stand_ins():
 
 _stand_ins()
 
-from olib_bridge import config, server  # noqa: E402 - after the stand-ins
+from olib_bridge import config, ops, server  # noqa: E402 - after the stand-ins
 
 
 class ServerTests(unittest.TestCase):
@@ -91,6 +91,33 @@ class TokenTests(unittest.TestCase):
         self.assertEqual(config.token({"token_dpapi": "not hex"}), "")
         self.assertEqual(config.token({}), "")
         self.assertEqual(config.token({"token": "plain"}), "plain")
+
+
+class MaterialArgumentTests(unittest.TestCase):
+    """What a request may ask 3ds Max to load."""
+
+    def test_only_images_that_are_there_become_maps(self):
+        with tempfile.TemporaryDirectory() as folder:
+            image = os.path.join(folder, "a.png")
+            script = os.path.join(folder, "a.ms")
+            for path in (image, script):
+                with open(path, "wb"):
+                    pass
+            self.assertEqual(ops._maps({"color": image, "other": script, "rough": ""}), {"color": image})
+            for bad in (script, image + "x.png", 7):
+                with self.assertRaises(RuntimeError):
+                    ops._maps({"color": bad})
+            with self.assertRaises(RuntimeError):
+                ops.apply_interior("x", image, script)
+
+    def test_sizes_and_targets(self):
+        self.assertEqual(ops._xyz([30, 60]), [30.0, 60.0, 60.0])
+        for bad in ([0], [-1, 2], [float("inf")]):
+            with self.assertRaises(RuntimeError):
+                ops._xyz(bad)
+        with self.assertRaises(RuntimeError):
+            ops._route("anywhere")
+        self.assertEqual(ops._route("slate"), "slate")
 
 
 if __name__ == "__main__":

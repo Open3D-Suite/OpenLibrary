@@ -16,13 +16,14 @@ pub const MIN_YEAR: u32 = 2025;
 pub const STARTUP_NAME: &str = "open3d_openlibrary.ms";
 
 /// The bridge's files: where each goes under `scripts\Open3D\OpenLibrary`, and its content.
-pub const FILES: [(&str, &[u8]); 8] = [
+pub const FILES: [(&str, &[u8]); 9] = [
     ("olib_bridge/__init__.py", include_bytes!("../bridge/olib_bridge/__init__.py")),
     ("olib_bridge/config.py", include_bytes!("../bridge/olib_bridge/config.py")),
     ("olib_bridge/ops.py", include_bytes!("../bridge/olib_bridge/ops.py")),
     ("olib_bridge/server.py", include_bytes!("../bridge/olib_bridge/server.py")),
     ("olib_bridge/toolbar.py", include_bytes!("../bridge/olib_bridge/toolbar.py")),
     ("olib_bridge/olib_core.ms", include_bytes!("../bridge/olib_bridge/olib_core.ms")),
+    ("olib_bridge/olib_materials.ms", include_bytes!("../bridge/olib_bridge/olib_materials.ms")),
     ("olib_bridge/olib_launch.mcr", include_bytes!("../bridge/olib_bridge/olib_launch.mcr")),
     ("olib_bridge/openlibrary.svg", include_bytes!("../bridge/olib_bridge/openlibrary.svg")),
 ];

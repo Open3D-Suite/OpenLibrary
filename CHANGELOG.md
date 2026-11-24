@@ -31,3 +31,10 @@ What changed for users in each version of OpenLibrary, newest first.
   A file that leaves it stuck is skipped.
 - **Missing files.** The panel of a model opens the list of what it does not find: relink it by hand, search for it in
   a folder, use what is in the model's folder, or remove it, and save it in the `.max` without opening it.
+- **Materials, textures and interiors.** Their tabs show PBR materials (maps of one name, with all their
+  resolutions), `.mat` libraries, loose textures and wParallax / ShadersBOX rooms. Drag a card onto an object in
+  3ds Max, where there is nothing (a room makes its window) or onto the Slate editor, or use its right-click menu.
+  Each material keeps its real size and its mapping, with those you wrote in the Python version. If the scene has the
+  material already, you choose whether to use it.
+- A Corona material with a normal and a bump map can be put with triplanar mapping (in the Python version 3ds Max
+  refused it).

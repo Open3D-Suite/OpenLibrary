@@ -93,6 +93,9 @@ pub fn merge_request(
     Ok((MergeRequest { cmd: "merge_proxy", args, used, exact }, moved))
 }
 
+/// Where the answer to [`MaxSession::request`] arrives.
+pub type MaxReply = Receiver<Result<Value, MaxError>>;
+
 /// What a request sent back, for the status bar.
 pub struct Done {
     pub text: String,
@@ -219,6 +222,21 @@ impl MaxSession {
             let _ = send.send(Done { text });
             wake();
         });
+    }
+
+    /// Sends a command to `info` on a thread. A 3ds Max with a window of its own open does not answer: after two
+    /// minutes it is not waited for. `None` without a token.
+    pub fn request(&mut self, info: &MaxInfo, cmd: &'static str, args: Value, wake: Arc<dyn Fn() + Send + Sync>) -> Option<MaxReply> {
+        let token = self.token.clone()?;
+        self.last_pid = Some(info.pid);
+        crate::platform::allow_foreground(info.pid);
+        let (send, receive) = channel();
+        let port = info.port;
+        std::thread::spawn(move || {
+            let _ = send.send(maxlink::call(port, &token, cmd, args, Some(Duration::from_secs(120)))); // the tab may have closed
+            wake();
+        });
+        Some(receive)
     }
 
     /// The supported 3ds Max of this user.

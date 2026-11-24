@@ -67,7 +67,7 @@ Update it in the same commit as a change that makes it old.
   and `discover` on 127.0.0.1:47820-47829, and `choose_file`, `relink_dirs`, `proxy_dir` for a merge.
 - `bridge/`: what runs inside 3ds Max (Python and MAXScript, English only): `olib_bridge/server.py` (refuses a
   request without the token and closes on a line that is not a JSON object; only `COMMANDS`), `ops.py`,
-  `olib_core.ms` (every global starts with `olib_`), `config.py` (decrypts the token). It lives beside the
+  `olib_core.ms` and `olib_materials.ms` (every global starts with `olib_`), `config.py` (decrypts the token). It lives beside the
   Python version's bridge (`scripts\OpenLibrary`, ports 47800-47809, prefix `olb_`) without touching it.
   `bridge/tests` run without 3ds Max, with stand-ins for pymxs and Qt.
 - `src/maxbatch.rs`: jobs of a 3ds Max in the background (`3dsmaxbatch.exe`): `Job` is a function of
@@ -79,6 +79,13 @@ Update it in the same commit as a change that makes it old.
   their paths without opening it.
 - `src/archives.rs`: opens a download with the 7-Zip, NanaZip or UnRAR installed, or the `tar` of Windows; its parts
   (`volumes`). `src/catalog.rs`: the proposed share (`guess`), the names and the copy (`Plan`).
+- `src/surfaces.rs`: materials and textures: `parse_name` (channel, resolution), `real_size`, `build_materials`,
+  `build_textures`, and `SurfaceIndex` with its cache (`surf_*.json`), which also keeps the pixels of the colour maps.
+- `src/interiors.rs`: the wParallax and ShadersBOX rooms (`build_interiors`).
+- `src/surface_prefs.rs`: the size and the mapping remembered of each material (keys relative to the root folder,
+  `stored_key`), the options of those tabs, and the arguments of the bridge's commands.
+- `src/ui_surfaces.rs`: `SurfacePanel`, the tabs of materials, textures and interiors; a drop asks `check_drop` first.
+- `src/foldertree.rs`: the tree of folders of the catalogue and of those tabs.
 - `src/task.rs`: `Task`, work on a thread of its own; dropping it cancels it and waits.
 - `src/open3d_settings.rs`: what every Open3D app shares, the language and the folders of each app, with
   the cases its tests read (`src/open3d_settings_cases.txt`).

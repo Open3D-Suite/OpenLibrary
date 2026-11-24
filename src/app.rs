@@ -17,6 +17,7 @@ use crate::texts::{Text, fill};
 use crate::thumbs::ThumbLoader;
 use crate::ui_catalog::CatalogWindow;
 use crate::ui_missing::MissingWindow;
+use crate::ui_surfaces::{SurfacePanel, Tools};
 use eframe::egui::{self, Color32, CornerRadius, Rect, Sense, Stroke, TextureHandle, TextureOptions, Vec2};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -89,6 +90,7 @@ pub struct OpenLibraryApp {
     preview_ask: Option<Vec<work::PreviewJob>>,
     missing: Option<MissingWindow>,
     catalog: Option<CatalogWindow>,
+    surfaces: Option<SurfacePanel>,
 }
 
 impl OpenLibraryApp {
@@ -155,6 +157,7 @@ impl OpenLibraryApp {
             preview_ask: None,
             missing: None,
             catalog: None,
+            surfaces: None,
         };
         app.open_tab(tab, &cc.egui_ctx);
         app
@@ -181,10 +184,14 @@ impl OpenLibraryApp {
         self.loader.clear_queue();
         self.scanning = false;
         self.progress = None;
+        self.surfaces = None;
+        let roots = self.settings.library_paths(tab);
         if self.tab_kind() != "models" {
+            let data = self.data_dir.clone().unwrap_or_else(std::env::temp_dir);
+            let kind = self.tab_kind().to_string();
+            self.surfaces = Some(SurfacePanel::new(&kind, &roots, &self.measures_dirs(), &data, self.lang, self.wake.clone()));
             return;
         }
-        let roots = self.settings.library_paths(tab);
         if roots.is_empty() {
             return;
         }
@@ -217,6 +224,13 @@ impl OpenLibraryApp {
         self.scanning = true;
     }
 
+    /// Where the sizes written down by hand are: the team's folder and this computer's, of both versions.
+    fn measures_dirs(&self) -> Vec<PathBuf> {
+        let workspace = self.settings.data.get("workspace").and_then(|w| w.as_str()).filter(|w| !w.is_empty()).map(PathBuf::from);
+        let old = std::env::var_os("LOCALAPPDATA").map(|l| PathBuf::from(l).join(crate::APP));
+        [old, self.data_dir.clone(), workspace].into_iter().flatten().map(|d| d.join("medidas")).collect()
+    }
+
     fn take_snapshots(&mut self) {
         let Some((receive, _)) = &self.scan else { return };
         let mut ended = false;
@@ -244,6 +258,9 @@ impl OpenLibraryApp {
     }
 
     fn take_loaded(&mut self, ctx: &egui::Context) {
+        if self.textures.len() > crate::thumbs::IN_MEMORY {
+            self.textures.clear(); // those on screen come back from the cache
+        }
         for loaded in self.loader.poll() {
             let texture = loaded.image.map(|img| {
                 let size = [img.width() as usize, img.height() as usize];
@@ -388,10 +405,6 @@ impl OpenLibraryApp {
     }
 
     fn gallery(&mut self, ui: &mut egui::Ui) {
-        if self.tab_kind() != "models" {
-            ui.centered_and_justified(|ui| ui.label(self.t(Text::NotModelsYet)));
-            return;
-        }
         if self.settings.library_paths(self.tab).is_empty() {
             ui.centered_and_justified(|ui| ui.label(self.t(Text::NoFolders)));
             return;
@@ -797,6 +810,8 @@ impl eframe::App for OpenLibraryApp {
                 work
             } else if let Some(notice) = &self.notice {
                 notice.clone()
+            } else if let Some(panel) = &self.surfaces {
+                panel.status()
             } else if let (true, Some((folders, models))) = (self.scanning, self.progress) {
                 fill(self.t(Text::ScanProgress), &[("folders", &folders), ("models", &models)])
             } else if self.scanning {
@@ -814,7 +829,15 @@ impl eframe::App for OpenLibraryApp {
                 });
             });
         });
-        if self.tab_kind() == "models" && self.index.is_some() {
+        if let Some(mut panel) = self.surfaces.take() {
+            let mut tools = Tools { settings: &mut self.settings, max: &mut self.max, notice: &mut self.notice };
+            panel.show(ui, &self.search, &mut tools);
+            self.surfaces = Some(panel);
+            self.bridge_prompt(&ctx);
+            self.windows(&ctx);
+            return;
+        }
+        if self.index.is_some() {
             egui::Panel::left("tree").resizable(true).default_size(240.0).show(ui, |ui| self.tree(ui));
         }
         if self.selected.is_some() {

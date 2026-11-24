@@ -23,7 +23,7 @@ from PySide6 import QtCore
 
 from . import config, ops
 
-PROTOCOL = 1
+PROTOCOL = 2
 PORTS = range(47820, 47830)
 MAX_LINE = 1 << 20  # a request longer than 1 MB is not one of the app's
 
@@ -111,6 +111,12 @@ COMMANDS = {
     "make_preview": ops.make_preview,
     "relink_scene": ops.relink_scene,
     "relink_file": ops.relink_max_file,
+    "check_drop": ops.check_drop,
+    "apply_material": ops.apply_material,
+    "apply_materials": ops.apply_materials,
+    "apply_library": ops.apply_library,
+    "add_textures": ops.add_textures,
+    "apply_interior": ops.apply_interior,
     "open_file": ops.open_max_file,
     "focus": ops.focus_max,
 }
