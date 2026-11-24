@@ -172,7 +172,7 @@ impl SettingsWindow {
             for i in 0..self.libraries.len() {
                 let name = text_of(&self.libraries[i], "name");
                 left.horizontal(|ui| {
-                    if ui.small_button("↑").clicked() && i > 0 {
+                    if ui.small_button("^").clicked() && i > 0 {
                         swap = Some((i, i - 1));
                     }
                     if ui.selectable_label(self.tab == i, name).clicked() {

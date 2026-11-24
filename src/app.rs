@@ -926,7 +926,12 @@ pub(crate) fn heart(ui: &mut egui::Ui, card: &egui::Response, on: bool) -> bool 
     }
     let response = ui.interact(rect, card.id.with("heart"), Sense::click());
     let color = if on { ACCENT } else { ui.visuals().weak_text_color() };
-    ui.painter_at(rect).text(rect.center(), egui::Align2::CENTER_CENTER, "❤", egui::FontId::proportional(15.0), color);
+    // two circles and the point below: the fonts have no heart
+    let (painter, at, r) = (ui.painter(), rect.center(), 3.6);
+    painter.circle_filled(at + Vec2::new(-r * 0.92, -r * 0.5), r, color);
+    painter.circle_filled(at + Vec2::new(r * 0.92, -r * 0.5), r, color);
+    let point = [Vec2::new(-r * 1.68, r * 0.12), Vec2::new(0.0, -r * 0.5), Vec2::new(r * 1.68, r * 0.12), Vec2::new(0.0, r * 1.9)];
+    painter.add(egui::Shape::convex_polygon(point.iter().map(|p| at + *p).collect(), color, Stroke::NONE));
     response.clicked()
 }
 

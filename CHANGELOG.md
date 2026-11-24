@@ -38,3 +38,14 @@ What changed for users in each version of OpenLibrary, newest first.
   material already, you choose whether to use it.
 - A Corona material with a normal and a bump map can be put with triplanar mapping (in the Python version 3ds Max
   refused it).
+- **Settings.** The window has its own settings: the tabs and their folders, how models come in, previews, the bridge
+  of each 3ds Max (install, update, remove, with or without its toolbar button) and the language. The first time,
+  it opens by itself.
+- **Shared workspace.** A team that chooses the same folder shares tabs, hidden folders, folder icons, material sizes
+  and mapping, and preview settings, also with people who still use the Python version.
+- **Favourites and folders.** A heart on each card marks a favourite, and each tab can open on them. Folders show how
+  many items they have and an icon by their name; their right-click menu gives them a colour or another icon, and
+  hides them.
+- **Quick look.** The space bar, or a double click, shows the image of a card large; the arrows go to the next one.
+- **Lost paths and live previews.** Find the lost files of the scene open in 3ds Max or inside `.max` files of the
+  library, and make the preview of a model from what is selected, or from your view, in 3ds Max.

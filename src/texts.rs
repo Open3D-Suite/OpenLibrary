@@ -698,6 +698,22 @@ mod tests {
     }
 
     #[test]
+    fn the_fonts_have_every_letter_and_sign() {
+        use eframe::egui;
+        let ctx = egui::Context::default();
+        ctx.run_ui(egui::RawInput::default(), |_| {}).textures_delta.clear(); // the fonts load in a frame
+        // besides the texts, the signs the windows draw with a font
+        let mut all = String::from("+−×^·…");
+        for text in Text::ALL {
+            all.push_str(text.get(Language::English));
+            all.push_str(text.get(Language::Spanish));
+        }
+        for c in all.chars().filter(|c| !c.is_control()) {
+            assert!(ctx.fonts_mut(|f| f.has_glyph(&egui::FontId::default(), c)), "{c:?}");
+        }
+    }
+
+    #[test]
     fn places_are_filled() {
         let text = Text::FilesMissing.get(Language::Spanish);
         assert_eq!(fill(text, &[("missing", &2), ("count", &9)]), "faltan 2 de 9 archivos");

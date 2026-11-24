@@ -42,6 +42,10 @@ Update it in the same commit as a change that makes it old.
 - `src/app.rs`: the window (eframe/egui): tabs and search, folder tree, gallery, selected model; it only draws
   what the other modules give it. Scans, thumbnails and `.max` reading run on threads of their own.
 - `src/app/work.rs`: the window's batches (previews, model data) and what opens the two windows below.
+- `src/app/live.rs`: what is asked of an open 3ds Max: the preview of its selection, lost paths of the scene or of
+  `.max` files.
+- `src/ui_settings.rs`: the settings window (a draft until it is accepted, but the bridge). `src/quicklook.rs`: the
+  image of a card, large.
 - `src/ui_catalog.rs`, `src/ui_missing.rs`: the windows to catalogue a download and for the missing files.
 - `src/max_session.rs`: the window's side of 3ds Max: `MaxSession` (discovery every 3 s, the bridge prompt,
   `install`, `send_merge` on a thread) and `merge_request`, which builds a merge from an asset and the settings.
@@ -85,7 +89,15 @@ Update it in the same commit as a change that makes it old.
 - `src/surface_prefs.rs`: the size and the mapping remembered of each material (keys relative to the root folder,
   `stored_key`), the options of those tabs, and the arguments of the bridge's commands.
 - `src/ui_surfaces.rs`: `SurfacePanel`, the tabs of materials, textures and interiors; a drop asks `check_drop` first.
-- `src/foldertree.rs`: the tree of folders of the catalogue and of those tabs.
+- `src/foldertree.rs`: the tree of folders: `SideTree` (the tabs, with favourites, counts, icons and its menu) and
+  `show` (the catalogue).
+- `src/settings/workspace.rs`: the team's workspace: the `SHARED` keys go to `workspace.json` too, mixed on saving
+  with what others wrote (`ENTRIES`, entry by entry); a file that cannot be read is never written over. The format
+  is the Python version's, and both may use one folder. The window looks at the file's date on a thread.
+- `src/favorites.rs`: the favourites of each person (`rel_key`) and what a tab shows of them (`tab_view`).
+- `src/foldericons.rs`: the icon of a folder by its name (`guess`) and those the person gives (`folder_marks`).
+  The drawings are SVG paths drawn as lines: the fonts of egui lack most signs, and a test in `texts.rs` fails on
+  a text with a sign they lack.
 - `src/task.rs`: `Task`, work on a thread of its own; dropping it cancels it and waits.
 - `src/open3d_settings.rs`: what every Open3D app shares, the language and the folders of each app, with
   the cases its tests read (`src/open3d_settings_cases.txt`).
