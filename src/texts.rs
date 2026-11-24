@@ -412,6 +412,33 @@ texts! {
         "No hay objetos seleccionados en 3ds Max: selecciónalos o usa el editor Slate.";
     PutNoWindow => "No objects are selected in 3ds Max: select the window, or make it.",
         "No hay objetos seleccionados en 3ds Max: selecciona la ventana o créala.";
+    IconFolder => "Folder", "Carpeta";
+    IconTree => "Tree", "Árbol";
+    IconPlant => "Plant", "Planta";
+    IconSofa => "Sofa", "Sofá";
+    IconChair => "Chair", "Silla";
+    IconTable => "Table", "Mesa";
+    IconBed => "Bed", "Cama";
+    IconLamp => "Lamp", "Lámpara";
+    IconBuilding => "Building", "Edificio";
+    IconDoor => "Door / window", "Puerta / ventana";
+    IconCar => "Vehicle", "Vehículo";
+    IconPerson => "People", "Personas";
+    IconBath => "Bathroom", "Baño";
+    IconKitchen => "Kitchen", "Cocina";
+    IconDecor => "Decoration", "Decoración";
+    IconImage => "Textures / maps", "Texturas / mapas";
+    IconBox => "Box", "Caja";
+    IconStar => "Star", "Estrella";
+    ColorRed => "Red", "Rojo";
+    ColorOrange => "Orange", "Naranja";
+    ColorAmber => "Amber", "Ámbar";
+    ColorGreen => "Green", "Verde";
+    ColorTurquoise => "Turquoise", "Turquesa";
+    ColorBlue => "Blue", "Azul";
+    ColorViolet => "Violet", "Violeta";
+    ColorPink => "Pink", "Rosa";
+    ColorGrey => "Grey", "Gris";
     SettingsError => "The settings could not be saved: {error}", "No se pudieron guardar los ajustes: {error}";
 }
 
