@@ -52,6 +52,8 @@ What changed for users in each version of OpenLibrary, newest first.
   material already, you choose whether to use it.
 - Materials whose maps end in how the set was made (`..._COL_4K_METALNESS`, `..._GLOSS_4K_SPECULAR`) are found too; the
   Python version left them out.
+- Numbered materials with a folder each are no longer taken for the planks of one floor; the colours of a set that share
+  its other maps are a material each, with all of them; and maps told by one letter (`-D`, `-B`, `-G`, `-N`) are found.
 - A Corona material with a normal and a bump map can be put with triplanar mapping (in the Python version 3ds Max
   refused it).
 - **Settings.** The window has its own settings: the tabs and their folders, how models come in, previews, the bridge
