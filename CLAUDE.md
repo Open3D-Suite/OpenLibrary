@@ -101,6 +101,8 @@ Update it in the same commit as a change that makes it old.
 - `src/task.rs`: `Task`, work on a thread of its own; dropping it cancels it and waits.
 - `src/open3d_settings.rs`: what every Open3D app shares, the language and the folders of each app, with
   the cases its tests read (`src/open3d_settings_cases.txt`).
+- `docs/security.md`: what the app reads and writes and what it checks; a change to any of it updates that page.
+  `assets/icon-256.png` is the icon for the launcher's catalog.
 - `build.rs`: the exe's icon (`assets/icon.ico`) and file properties.
 
 ## Build and check

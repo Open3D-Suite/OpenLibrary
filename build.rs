@@ -15,7 +15,7 @@ fn main() {
     }
     resource.set("ProductName", "OpenLibrary");
     resource.set("FileDescription", "OpenLibrary");
-    resource.set("LegalCopyright", "Copyright (C) 2026 <Author> and OpenLibrary contributors. GPL-3.0-or-later.");
+    resource.set("LegalCopyright", "Copyright (C) 2026 daniellopezcastellanos and OpenLibrary contributors. GPL-3.0-or-later.");
     if let Err(error) = resource.compile() {
         println!("cargo:warning=the executable has no icon and no file version: {error}");
     }

@@ -43,6 +43,18 @@ OpenLibrary does not use the internet.
 The version before, in Python, is
 [OpenLibrary-python](https://github.com/daniellopezcastellanos/OpenLibrary-python); both can be installed.
 
+3ds Max 2026 is the version it is written with; 2025 and 2027 should work, but are not tested. The renderers are Corona
+and V-Ray.
+
+## Privacy and security
+
+OpenLibrary does not use the internet: no account, no downloads, nothing sent. It talks to 3ds Max on your own computer
+(`127.0.0.1`), with a token that only your Windows user can read, and reads and writes your library and, if your team
+uses one, its shared folder. Opening a model in 3ds Max is as safe as 3ds Max's own *Safe Scene Script Execution*: keep
+it on. [docs/security.md](https://github.com/Open3D-Suite/OpenLibrary/blob/main/docs/security.md) lists what it reads and writes, and what it does not protect against.
+
+## Language
+
 OpenLibrary shows itself in the language of the Open3D launcher and the other Open3D apps, English or
 Spanish. Until one is chosen there, it follows Windows: Spanish if Windows is in Spanish, English
 otherwise.
