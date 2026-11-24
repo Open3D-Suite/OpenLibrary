@@ -41,10 +41,11 @@ It never asks for administrator rights, never uses the internet and downloads no
 
 ## What it does not protect against
 
-- **Opening a `.max` in 3ds Max.** Merging a model, or cataloguing one with *Corona version* or *layer 0*, or making its
-  preview, opens it in 3ds Max, where 3ds Max's own protection applies (*Preferences > Security*, *Safe Scene Script
-  Execution*, on by default). Keep it on, and do not open files you do not trust. The same goes for `.mat` libraries
-  and for the OSL shaders of a library.
+- **Opening a `.max` in 3ds Max.** The 3ds Max in the background (previews, model data, *Corona version*, *layer 0*) is
+  always started with *Safe Scene Script Execution* on, and does nothing without it: the scripts of a scene may run,
+  but not commands of the system, Python, .NET or what writes scripts. Merging a model into your own 3ds Max is as safe
+  as its *Preferences > Security*: keep it on, and do not open files you do not trust. The same goes for `.mat`
+  libraries and for the OSL shaders of a library.
 - **Programs of the same Windows user.** They can read what that user can, the token included.
 - **The password of an archive** is given to the unpacker on its command line, where other programs of the same user can
   see it while it extracts.

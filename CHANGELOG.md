@@ -49,3 +49,6 @@ What changed for users in each version of OpenLibrary, newest first.
 - **Quick look.** The space bar, or a double click, shows the image of a card large; the arrows go to the next one.
 - **Lost paths and live previews.** Find the lost files of the scene open in 3ds Max or inside `.max` files of the
   library, and make the preview of a model from what is selected, or from your view, in 3ds Max.
+- **Safe with other people's files.** The 3ds Max in the background always runs with Safe Scene Script Execution on;
+  network paths written in a `.max` are not followed to computers you do not use; and a damaged file does not stop the
+  app.
