@@ -48,7 +48,12 @@ impl QuickLook {
         }
     }
 
-    /// Draws it; `false` when it is closed.
+    /// The card shown.
+    pub fn at(&self) -> usize {
+        self.at
+    }
+
+    /// Draws it over the whole window; `false` when it is closed.
     pub fn show(&mut self, ctx: &egui::Context) -> bool {
         if let Some(image) = self.task.as_ref().and_then(|t| t.poll().pop()) {
             self.task = None;
@@ -58,33 +63,46 @@ impl QuickLook {
                 ctx.load_texture("quick-look", egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw()), TextureOptions::LINEAR)
             });
         }
-        let room = ctx.content_rect().size() - Vec2::splat(120.0);
-        let response = egui::Modal::new(egui::Id::unique("openlibrary-quick-look")).show(ctx, |ui| {
-            if let Some((name, _)) = self.items.get(self.at) {
-                ui.heading(name);
-            }
-            match &self.texture {
-                Some(texture) => {
-                    let size = texture.size_vec2();
-                    let scale = (room.x / size.x).min((room.y - 40.0) / size.y);
-                    ui.image((texture.id(), size * scale));
-                }
-                None => {
-                    ui.allocate_ui(Vec2::new(room.x.min(600.0), room.y.min(400.0)), |ui| {
-                        let text = if self.failed { Text::NoPreview } else { Text::Loading };
-                        ui.centered_and_justified(|ui| ui.label(text.get(self.lang)));
-                    });
-                }
-            }
+        let whole = ctx.content_rect();
+        let layer = egui::Area::new(egui::Id::unique("openlibrary-quick-look")).order(egui::Order::Foreground).fixed_pos(whole.min);
+        let clicked = layer.show(ctx, |ui| self.paint(ui, whole)).inner;
+        let (by, closed) = ctx.input(|i| {
+            let pressed = |keys: &[egui::Key]| keys.iter().any(|k| i.key_pressed(*k));
+            let wheel: f32 = i.events.iter().map(|e| if let egui::Event::MouseWheel { delta, .. } = e { delta.y } else { 0.0 }).sum();
+            let next = pressed(&[egui::Key::ArrowRight, egui::Key::ArrowDown]) || wheel < 0.0;
+            let back = pressed(&[egui::Key::ArrowLeft, egui::Key::ArrowUp]) || wheel > 0.0;
+            (isize::from(next) - isize::from(back), pressed(&[egui::Key::Space, egui::Key::Escape, egui::Key::Enter]))
         });
-        let (left, right, space) =
-            ctx.input(|i| (i.key_pressed(egui::Key::ArrowLeft), i.key_pressed(egui::Key::ArrowRight), i.key_pressed(egui::Key::Space)));
-        if left {
-            self.step(-1);
+        if by != 0 {
+            self.step(by);
         }
-        if right {
-            self.step(1);
+        !(clicked || closed)
+    }
+
+    /// `true` when it was clicked.
+    fn paint(&self, ui: &mut egui::Ui, whole: egui::Rect) -> bool {
+        let response = ui.allocate_rect(whole, egui::Sense::click());
+        let painter = ui.painter_at(whole);
+        painter.rect_filled(whole, 0.0, egui::Color32::from_black_alpha(242));
+        let (light, dim) = (egui::Color32::from_gray(238), egui::Color32::from_gray(150));
+        let room = egui::Rect::from_min_max(whole.min + Vec2::new(40.0, 30.0), whole.max - Vec2::new(40.0, 84.0));
+        match &self.texture {
+            Some(texture) => {
+                let size = texture.size_vec2();
+                let scale = (room.width() / size.x).min(room.height() / size.y).min(2.0);
+                let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                painter.image(texture.id(), egui::Rect::from_center_size(room.center(), size * scale), uv, egui::Color32::WHITE);
+            }
+            None => {
+                let text = if self.failed { Text::NoPreview } else { Text::Loading };
+                painter.text(room.center(), egui::Align2::CENTER_CENTER, text.get(self.lang), egui::FontId::proportional(14.0), dim);
+            }
         }
-        !(response.should_close() || space)
+        let name = self.items.get(self.at).map_or("", |(name, _)| name.as_str());
+        let at = egui::pos2(whole.center().x, whole.bottom() - 54.0);
+        painter.text(at, egui::Align2::CENTER_CENTER, name, crate::kit::strong(17.0), light);
+        let note = format!("{} / {}  ·  {}", self.at + 1, self.items.len(), Text::LookKeys.get(self.lang));
+        painter.text(at + Vec2::new(0.0, 24.0), egui::Align2::CENTER_CENTER, note, egui::FontId::proportional(12.0), dim);
+        response.clicked()
     }
 }

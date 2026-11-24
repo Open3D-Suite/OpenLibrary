@@ -5,12 +5,14 @@
 
 pub mod app;
 pub mod archives;
+pub mod badges;
 pub mod bridge_install;
 pub mod catalog;
 pub mod favorites;
 pub mod foldericons;
 pub mod foldertree;
 pub mod interiors;
+pub mod kit;
 pub mod library;
 pub mod max_session;
 pub mod maxbatch;

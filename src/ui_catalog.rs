@@ -5,6 +5,7 @@
 use crate::archives::{self, ArchiveError};
 use crate::catalog::{self, Bucket, Item, Plan, Request};
 use crate::foldertree::{self, Folder};
+use crate::kit::{self, Kind};
 use crate::library::{LibraryIndex, norm_key};
 use crate::maxbatch::{self, Outcome};
 use crate::maxfile::{self, Engine};
@@ -13,7 +14,7 @@ use crate::platform;
 use crate::task::{Task, Wake};
 use crate::texts::{Text, fill};
 use crate::thumbs::ThumbLoader;
-use eframe::egui::{self, Color32, TextureHandle, TextureOptions, Vec2};
+use eframe::egui::{self, Color32, Rect, Stroke, StrokeKind, TextureHandle, TextureOptions, Vec2};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -21,7 +22,6 @@ use std::path::{Path, PathBuf};
 const ROW: f32 = 44.0;
 /// More files than this are a whole library, not a download.
 const LIMIT: usize = 5000;
-const WARN: Color32 = Color32::from_rgb(0xD0, 0x6A, 0x3A);
 
 struct Entry {
     item: Item,
@@ -479,70 +479,80 @@ impl CatalogWindow {
     fn top(&mut self, ui: &mut egui::Ui) {
         let idle = !self.busy();
         ui.horizontal(|ui| {
-            if ui.add_enabled(idle, egui::Button::new(self.t(Text::CatalogOpenArchive))).clicked() {
-                let dialog = rfd::FileDialog::new().set_directory(&self.last_dir).add_filter("zip, rar, 7z", &archives::EXTENSIONS);
-                if let Some(path) = dialog.pick_file() {
+            ui.set_height(32.0);
+            ui.label(egui::RichText::new(self.t(Text::CatalogGo)).font(kit::strong(20.0)));
+            ui.add_space(12.0);
+            ui.add_enabled_ui(idle, |ui| {
+                if kit::button(ui, Kind::Action, Some("catalog"), self.t(Text::CatalogOpenArchive)).clicked() {
+                    let dialog = rfd::FileDialog::new().set_directory(&self.last_dir).add_filter("zip, rar, 7z", &archives::EXTENSIONS);
+                    if let Some(path) = dialog.pick_file() {
+                        self.open(&path);
+                    }
+                }
+                if kit::button(ui, Kind::Action, Some("folder"), self.t(Text::CatalogOpenFolder)).clicked()
+                    && let Some(path) = rfd::FileDialog::new().set_directory(&self.last_dir).pick_folder()
+                {
                     self.open(&path);
                 }
-            }
-            if ui.add_enabled(idle, egui::Button::new(self.t(Text::CatalogOpenFolder))).clicked()
-                && let Some(path) = rfd::FileDialog::new().set_directory(&self.last_dir).pick_folder()
-            {
-                self.open(&path);
-            }
-            if ui.add_enabled(idle, egui::Button::new(self.t(Text::CatalogPaste))).on_hover_text(self.t(Text::CatalogPasteHint)).clicked() {
-                self.paste();
-            }
-            ui.label(egui::RichText::new(&self.status).small());
+                let paste = kit::button(ui, Kind::Action, Some("image"), self.t(Text::CatalogPaste));
+                if paste.on_hover_text(self.t(Text::CatalogPasteHint)).clicked() {
+                    self.paste();
+                }
+            });
             if self.busy() {
                 ui.spinner();
+            }
+            let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), egui::Sense::hover());
+            let font = egui::FontId::proportional(12.5);
+            kit::elided(ui.painter(), rect.left_center(), egui::Align2::LEFT_CENTER, &self.status, font, kit::pal(ui).muted, rect.width());
+            if !self.status.is_empty() {
+                response.on_hover_text(&self.status);
             }
         });
     }
 
-    fn bucket(&mut self, ui: &mut egui::Ui, bucket: Bucket, title: Text, height: f32) {
+    /// A list of files in its part of the window: files are dragged from one to another.
+    fn bucket(&mut self, ui: &mut egui::Ui, bucket: Bucket, title: Text, area: Rect) {
+        let p = kit::pal(ui);
         let rows: Vec<usize> = (0..self.entries.len()).filter(|&i| self.entries[i].bucket == bucket).collect();
-        ui.label(egui::RichText::new(format!("{} ({})", self.t(title).to_uppercase(), rows.len())).small().strong());
+        let head = Rect::from_min_size(area.min, Vec2::new(area.width(), 24.0));
+        let place = Rect::from_min_max(egui::pos2(area.left(), head.bottom()), area.max);
+        let text = format!("{}  ({})", self.t(title).to_uppercase(), rows.len());
+        kit::elided(ui.painter(), head.left_center(), egui::Align2::LEFT_CENTER, &text, kit::mono_bold(11.0), p.muted, head.width());
+        let zone = ui.interact(place, ui.scope_id().with(("bucket", title.get(Language::English))), egui::Sense::click());
+        let over = zone.dnd_hover_payload::<usize>().is_some();
+        let dropped = zone.dnd_release_payload::<usize>();
+        let border = if over { Stroke::new(2.0, p.accent) } else { Stroke::new(1.0, p.border_hi) };
+        ui.painter().rect(place, 0.0, p.surface, border, StrokeKind::Inside);
         let mut clicked = None;
         let mut action = None;
-        let frame = egui::Frame::group(ui.style()).inner_margin(2.0);
-        let (_, dropped) = ui.dnd_drop_zone::<usize, ()>(frame, |ui| {
-            ui.set_min_size(Vec2::new(ui.available_width(), height));
-            egui::ScrollArea::vertical().id_salt(title.get(Language::English)).auto_shrink(false).max_height(height).show_rows(
-                ui,
-                ROW,
-                rows.len(),
-                |ui, range| {
-                    for &i in &rows[range] {
-                        let response = self.row(ui, i);
-                        response.dnd_set_drag_payload(i);
-                        if response.clicked() {
-                            clicked = Some(i);
-                        }
-                        response.context_menu(|ui| {
-                            for (to, text) in [
-                                (Bucket::Max, Text::CatalogToMax),
-                                (Bucket::Preview, Text::CatalogToPreview),
-                                (Bucket::Maps, Text::CatalogToMaps),
-                                (Bucket::Skip, Text::CatalogToSkip),
-                            ] {
-                                if to != bucket && ui.button(self.t(text)).clicked() {
-                                    action = Some((i, Some(to)));
-                                    ui.close();
-                                }
-                            }
-                            if bucket == Bucket::Preview && rows.first() != Some(&i) && ui.button(self.t(Text::CatalogFirst)).clicked() {
-                                action = Some((i, None));
-                                ui.close();
-                            }
-                        });
+        kit::inside(ui, place.shrink(3.0), |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            let list = egui::ScrollArea::vertical().id_salt(title.get(Language::English)).auto_shrink(false);
+            list.show_rows(ui, ROW, rows.len(), |ui, range| {
+                for &i in &rows[range] {
+                    let response = self.row(ui, i);
+                    response.dnd_set_drag_payload(i);
+                    if response.double_clicked() {
+                        open_file(&self.entries[i].item);
+                    } else if response.clicked() {
+                        clicked = Some(i);
                     }
-                },
-            );
-            if bucket == Bucket::Preview && rows.is_empty() {
-                ui.centered_and_justified(|ui| ui.weak(self.t(Text::CatalogPreviewHint)));
-            }
+                    response.context_menu(|ui| {
+                        action = self.row_menu(ui, i, bucket, rows.first() != Some(&i)).or(action.take());
+                    });
+                }
+            });
         });
+        if rows.is_empty() {
+            let hint = match bucket {
+                Bucket::Skip if self.source.is_none() => self.t(Text::CatalogHint),
+                Bucket::Preview => self.t(Text::CatalogPreviewHint),
+                _ => self.t(Text::CatalogDropHere),
+            };
+            let galley = ui.painter().layout(hint.to_string(), egui::FontId::proportional(12.0), p.faint, place.width() - 24.0);
+            ui.painter().galley(place.center() - galley.size() / 2.0, galley, p.faint);
+        }
         if let Some(i) = clicked {
             self.select(i, ui.input(|s| (s.modifiers.command, s.modifiers.shift)));
         }
@@ -559,6 +569,39 @@ impl CatalogWindow {
                 self.entries.insert(0, entry);
             }
             None => {}
+        }
+    }
+
+    /// Where to take a file, or `None` to put it the first.
+    fn row_menu(&self, ui: &mut egui::Ui, i: usize, bucket: Bucket, not_first: bool) -> Option<(usize, Option<Bucket>)> {
+        let mut action = None;
+        for (to, text) in [
+            (Bucket::Max, Text::CatalogToMax),
+            (Bucket::Preview, Text::CatalogToPreview),
+            (Bucket::Maps, Text::CatalogToMaps),
+            (Bucket::Skip, Text::CatalogToSkip),
+        ] {
+            if to != bucket && ui.button(self.t(text)).clicked() {
+                action = Some((i, Some(to)));
+            }
+        }
+        if bucket == Bucket::Preview && not_first && ui.button(self.t(Text::CatalogFirst)).clicked() {
+            action = Some((i, None));
+        }
+        ui.separator();
+        if ui.button(self.t(Text::CatalogOpenFile)).clicked() {
+            open_file(&self.entries[i].item);
+        }
+        action
+    }
+
+    /// The Delete key: what is selected is not copied.
+    fn delete_key(&mut self, ctx: &egui::Context) {
+        if self.busy() || self.ask.is_some() || ctx.egui_wants_keyboard_input() || !ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
+            return;
+        }
+        for entry in self.entries.iter_mut().filter(|e| e.selected && e.bucket != Bucket::Skip) {
+            (entry.bucket, entry.selected) = (Bucket::Skip, false);
         }
     }
 
@@ -619,7 +662,8 @@ impl CatalogWindow {
         };
         let left = box_.right() + 6.0;
         let font = egui::FontId::proportional(12.5);
-        painter.text(egui::pos2(left, rect.top() + 5.0), egui::Align2::LEFT_TOP, &entry.item.name, font, visuals.text_color());
+        let room = rect.right() - left - 8.0;
+        kit::elided(&painter, egui::pos2(left, rect.top() + 5.0), egui::Align2::LEFT_TOP, &entry.item.name, font, visuals.text_color(), room);
         let small = egui::FontId::proportional(11.0);
         let detail = format!("{}{engine}", catalog::human_size(entry.item.size));
         painter.text(egui::pos2(left, rect.bottom() - 5.0), egui::Align2::LEFT_BOTTOM, detail, small, visuals.weak_text_color());
@@ -627,13 +671,11 @@ impl CatalogWindow {
         response.on_hover_text(full)
     }
 
-    fn tree(&mut self, ui: &mut egui::Ui, height: f32) {
+    fn tree(&mut self, ui: &mut egui::Ui) {
         let hint = self.t(Text::CatalogFindFolder);
         ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text(hint).desired_width(f32::INFINITY));
         let filter = self.filter.clone();
-        ui.allocate_ui(Vec2::new(ui.available_width(), height), |ui| {
-            foldertree::show(ui, "catalog", &self.folders, &mut self.expanded, &filter, &mut self.dest);
-        });
+        foldertree::show(ui, "catalog", &self.folders, &mut self.expanded, &filter, &mut self.dest);
     }
 
     fn new_folder(&mut self) {
@@ -650,28 +692,41 @@ impl CatalogWindow {
         self.dest = Some(path);
     }
 
-    fn options(&mut self, ui: &mut egui::Ui) {
-        ui.label(egui::RichText::new(self.t(Text::CatalogName).to_uppercase()).small().strong());
+    /// The name and the folder; below, always in sight, the options and what is going to be saved.
+    fn options(&mut self, ui: &mut egui::Ui, answer: &mut Answer) {
+        let frame = egui::Frame::NONE.inner_margin(egui::Margin { top: 8, ..egui::Margin::ZERO });
+        egui::Panel::bottom("catalog-below").frame(frame).resizable(false).show(ui, |ui| self.below(ui, answer));
+        kit::caption(ui, self.t(Text::CatalogName));
         ui.add(egui::TextEdit::singleline(&mut self.name).desired_width(f32::INFINITY));
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new(self.t(Text::CatalogWhere).to_uppercase()).small().strong());
-        let height = (ui.available_height() - 260.0).max(80.0);
-        self.tree(ui, height);
-        ui.horizontal(|ui| {
-            if ui.add_enabled(self.dest.is_some() && !self.busy(), egui::Button::new(self.t(Text::CatalogNewFolder))).clicked() {
+        ui.add_space(6.0);
+        kit::caption(ui, self.t(Text::CatalogWhere));
+        self.tree(ui);
+    }
+
+    fn below(&mut self, ui: &mut egui::Ui, answer: &mut Answer) {
+        let can = self.dest.is_some() && !self.busy();
+        let width = ui.available_width();
+        ui.add_enabled_ui(can, |ui| {
+            if kit::sized_button(ui, Kind::Action, Some("plus"), self.t(Text::CatalogNewFolder), width).clicked() {
                 self.field.clear();
                 self.ask = Some(Ask::NewFolder);
             }
-            ui.label(self.t(Text::CatalogMapsIn));
-            ui.add(egui::TextEdit::singleline(&mut self.maps_folder).desired_width(100.0));
+        });
+        ui.horizontal(|ui| {
+            ui.weak(self.t(Text::CatalogMapsIn));
+            ui.add(egui::TextEdit::singleline(&mut self.maps_folder).desired_width(f32::INFINITY));
         });
         let maxes = self.maxes();
         let can = catalog::can_make_corona(&maxes);
         let (corona, layers) = (self.t(Text::CatalogToCorona), self.t(Text::CatalogCleanLayers));
         ui.add_enabled(can || maxes.is_empty(), egui::Checkbox::new(&mut self.to_corona, corona)).on_hover_text(self.t(Text::CatalogToCoronaHint));
         ui.checkbox(&mut self.clean_layers, layers);
-        ui.separator();
-        self.summary(ui);
+        ui.add_space(4.0);
+        ui.allocate_ui(Vec2::new(width, 96.0), |ui| {
+            ui.set_min_height(96.0);
+            self.summary(ui);
+        });
+        self.bottom(ui, answer);
     }
 
     fn summary(&self, ui: &mut egui::Ui) {
@@ -737,10 +792,10 @@ impl CatalogWindow {
                 }
             }
             ui.horizontal(|ui| {
-                if ui.button(egui::RichText::new(self.t(Text::Continue)).strong()).clicked() {
+                if kit::button(ui, Kind::Primary, None, self.t(Text::Continue)).clicked() {
                     choice = Some(true);
                 }
-                if ui.button(self.t(Text::Cancel)).clicked() {
+                if kit::button(ui, Kind::Action, None, self.t(Text::Cancel)).clicked() {
                     choice = Some(false);
                 }
             });
@@ -763,26 +818,31 @@ impl CatalogWindow {
     }
 
     fn bottom(&mut self, ui: &mut egui::Ui, answer: &mut Answer) {
+        if !self.busy() && self.plan().is_some_and(|p| !p.conflicts().is_empty()) {
+            ui.colored_label(kit::pal(ui).warn, self.t(Text::CatalogExists));
+        }
+        if let Some(saving) = &self.saving {
+            let part = saving.done as f32 / saving.plan.ops.len().max(1) as f32;
+            ui.add(egui::ProgressBar::new(part).desired_width(ui.available_width()).desired_height(8.0));
+        }
+        let width = (ui.available_width() - 8.0) / 2.0;
         ui.horizontal(|ui| {
-            let ready = !self.busy() && self.plan().is_some();
-            let go = egui::Button::new(egui::RichText::new(self.t(Text::CatalogGo)).strong());
-            if ui.add_enabled(ready, go).clicked() {
-                self.save(None);
-            }
+            ui.spacing_mut().item_spacing.x = 8.0;
             if let Some(task) = &self.task {
-                if ui.add_enabled(!task.cancelled(), egui::Button::new(self.t(Text::Cancel))).clicked() {
-                    task.cancel();
-                }
-            } else if ui.button(self.t(Text::Close)).clicked() {
+                ui.add_enabled_ui(!task.cancelled(), |ui| {
+                    if kit::sized_button(ui, Kind::Action, None, self.t(Text::Cancel), width).clicked() {
+                        task.cancel();
+                    }
+                });
+            } else if kit::sized_button(ui, Kind::Action, None, self.t(Text::Close), width).clicked() {
                 answer.close = true;
             }
-            if let Some(saving) = &self.saving {
-                let part = saving.done as f32 / saving.plan.ops.len().max(1) as f32;
-                ui.add(egui::ProgressBar::new(part).desired_width(160.0));
-            }
-            if !self.busy() && self.plan().is_some_and(|p| !p.conflicts().is_empty()) {
-                ui.colored_label(WARN, self.t(Text::CatalogExists));
-            }
+            let ready = !self.busy() && self.plan().is_some();
+            ui.add_enabled_ui(ready, |ui| {
+                if kit::sized_button(ui, Kind::Accent, Some("catalog"), self.t(Text::CatalogGo), width).clicked() {
+                    self.save(None);
+                }
+            });
         });
     }
 
@@ -793,29 +853,47 @@ impl CatalogWindow {
         self.poll(&mut answer);
         self.take_thumbs(&ctx);
         self.take_drops(&ctx);
-        egui::Panel::top("catalog-top").show(ui, |ui| {
-            ui.add_space(4.0);
-            self.top(ui);
-            ui.add_space(4.0);
-        });
-        egui::Panel::bottom("catalog-bottom").show(ui, |ui| {
-            ui.add_space(4.0);
-            self.bottom(ui, &mut answer);
-            ui.add_space(4.0);
-        });
-        egui::Panel::right("catalog-options").resizable(true).default_size(360.0).show(ui, |ui| self.options(ui));
-        egui::Panel::left("catalog-skip").resizable(true).default_size(260.0).show(ui, |ui| {
-            let height = ui.available_height() - 40.0;
-            self.bucket(ui, Bucket::Skip, Text::CatalogSkip, height);
-        });
-        egui::CentralPanel::default().show(ui, |ui| {
-            let height = (ui.available_height() - 110.0).max(200.0);
-            self.bucket(ui, Bucket::Max, Text::CatalogMax, height * 0.25);
-            self.bucket(ui, Bucket::Preview, Text::CatalogPreview, height * 0.25);
-            self.bucket(ui, Bucket::Maps, Text::CatalogMaps, height * 0.5);
+        self.delete_key(&ctx);
+        let p = kit::pal(ui);
+        let bar = egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin::symmetric(14, 8));
+        egui::Panel::top("catalog-top").frame(bar).show(ui, |ui| self.top(ui));
+        let side = egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin::same(14));
+        let right = egui::Panel::right("catalog-options").frame(side).resizable(true).default_size(350.0).min_size(280.0);
+        right.show(ui, |ui| self.options(ui, &mut answer));
+        let main = egui::Frame::new().fill(p.bg).inner_margin(egui::Margin::same(14));
+        egui::CentralPanel::default().frame(main).show(ui, |ui| {
+            let [skip, max, preview, maps] = lists(ui.available_rect_before_wrap());
+            self.bucket(ui, Bucket::Skip, Text::CatalogSkip, skip);
+            self.bucket(ui, Bucket::Max, Text::CatalogMax, max);
+            self.bucket(ui, Bucket::Preview, Text::CatalogPreview, preview);
+            self.bucket(ui, Bucket::Maps, Text::CatalogMaps, maps);
         });
         self.question(&ctx);
         answer
+    }
+}
+
+/// Where the four lists go: what is not copied at the left, and the other three one over another.
+fn lists(whole: Rect) -> [Rect; 4] {
+    let gap = 12.0;
+    let left = whole.width() * 0.42;
+    let skip = Rect::from_min_size(whole.min, Vec2::new(left - gap / 2.0, whole.height()));
+    let x = whole.left() + left + gap / 2.0;
+    let part = (whole.height() - 2.0 * gap) / 9.0;
+    let row =
+        |top: f32, parts: f32| Rect::from_min_max(egui::pos2(x, whole.top() + top), egui::pos2(whole.right(), whole.top() + top + part * parts));
+    [skip, row(0.0, 2.0), row(part * 2.0 + gap, 2.0), row(part * 4.0 + gap * 2.0, 5.0)]
+}
+
+/// Opens a file of the download to look at it. One that Windows would run is only shown in its folder: downloads are
+/// not to be trusted.
+fn open_file(item: &Item) {
+    let text = ["txt", "pdf", "md", "rtf"];
+    let extension = item.path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if item.is_image() || text.contains(&extension.as_str()) {
+        crate::platform::open_document(&item.path);
+    } else {
+        crate::platform::reveal(&item.path);
     }
 }
 
@@ -823,5 +901,21 @@ impl Drop for CatalogWindow {
     fn drop(&mut self) {
         self.task = None; // stops the work before its folder goes
         let _ = std::fs::remove_dir_all(&self.tmp);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_four_lists_fill_the_window_and_do_not_touch() {
+        let whole = Rect::from_min_size(egui::pos2(10.0, 50.0), Vec2::new(900.0, 600.0));
+        let all = lists(whole);
+        assert!(all.iter().all(|r| whole.expand(0.1).contains_rect(*r) && r.height() > 80.0));
+        assert!((all[0].height() - 600.0).abs() < 0.1 && (all[3].bottom() - whole.bottom()).abs() < 0.1);
+        for (i, a) in all.iter().enumerate() {
+            assert!(all.iter().skip(i + 1).all(|b| !a.intersects(*b)));
+        }
     }
 }

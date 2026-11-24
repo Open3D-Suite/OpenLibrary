@@ -267,6 +267,27 @@ impl Settings {
         }
     }
 
+    /// The names to hide, as they are written: separated by commas.
+    pub fn set_hidden_names(&mut self, text: &str) {
+        let names: Vec<&str> = text.split(',').map(str::trim).filter(|n| !n.is_empty()).collect();
+        let paths: Vec<String> = self.hidden().1.iter().map(|p| p.display().to_string()).collect();
+        self.data.insert("hidden_folders".into(), json!({"names": names, "paths": paths}));
+    }
+
+    /// Shows again the folders of a name, or a folder; all of them for neither.
+    pub fn show_hidden(&mut self, name: Option<&str>, path: Option<&Path>) {
+        let (mut names, mut paths) = self.hidden();
+        match (name, path) {
+            (None, None) => (names, paths) = (Vec::new(), Vec::new()),
+            _ => {
+                names.retain(|n| name.is_none_or(|x| !n.eq_ignore_ascii_case(x)));
+                paths.retain(|p| path.is_none_or(|x| p != x));
+            }
+        }
+        let paths: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+        self.data.insert("hidden_folders".into(), json!({"names": names, "paths": paths}));
+    }
+
     fn hide(&mut self, list: &str, value: &str) {
         let hidden = self.data.entry("hidden_folders").or_insert_with(|| json!({}));
         if !hidden.is_object() {

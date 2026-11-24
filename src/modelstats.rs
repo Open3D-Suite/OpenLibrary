@@ -83,6 +83,11 @@ impl StatsCache {
         Self { path: path.to_path_buf(), data }
     }
 
+    /// The stats last read, without asking the disk whether the file has changed.
+    pub fn peek(&self, file: &Path) -> Option<Option<&Stats>> {
+        self.data.get(&norm_key(file)).map(|r| r.stats.as_ref())
+    }
+
     /// `None`: not read since the file changed. `Some(None)`: 3ds Max could not read it.
     pub fn get(&self, file: &Path) -> Option<Option<&Stats>> {
         let record = self.data.get(&norm_key(file))?;

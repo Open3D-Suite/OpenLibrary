@@ -698,4 +698,78 @@ fn olib_setFileDir oldPath newDir =
     catch ( false )
 )
 
+-- ---------------------------------------------------------------------------
+-- What is in the scene already. Each object that comes in is marked with the model it is of (id), whether it is
+-- a proxy, the import it came with and how many objects that import had, so that it can be instanced later.
+-- ---------------------------------------------------------------------------
+fn olib_tag nodes id kind =
+(
+    local run = "r" + ((timeStamp()) as string) + "_" + ((random 1 999999) as string)
+    nodes = for n in nodes where isValidNode n collect n
+    for n in nodes do
+    (
+        setUserProp n "olibAsset" id
+        setUserProp n "olibKind" kind
+        setUserProp n "olibRun" run
+        setUserProp n "olibCount" nodes.count
+    )
+)
+
+fn olib_handleOrder a b = a.inode.handle - b.inode.handle
+
+fn olib_withChildren n =
+(
+    local out = #(n)
+    for c in n.children do join out (olib_withChildren c)
+    out
+)
+
+-- One copy of a model that is in the scene: its objects, or #(). kind: "proxy" or "model".
+fn olib_findAsset id assetName kind =
+(
+    local all = for o in objects where (getUserProp o "olibAsset") == id and (getUserProp o "olibKind") == kind collect o
+    if all.count > 0 do
+    (
+        local run = getUserProp all[1] "olibRun"
+        local same = for o in all where (getUserProp o "olibRun") == run collect o
+        -- instances made by hand carry the same marks: the first ones are the import itself
+        qsort same olib_handleOrder
+        local count = getUserProp same[1] "olibCount"
+        if classof count != Integer do count = same.count
+        return (for i = 1 to (amin count same.count) collect same[i])
+    )
+    -- brought in before there were marks
+    if kind == "proxy" then
+    (
+        local files = #()
+        local out = #()
+        for o in geometry where isProperty o #filename do
+        (
+            local f = try ( toLower (o.filename as string) ) catch ( "" )
+            if matchPattern f pattern:("*\\_proxies\\" + (toLower assetName) + "_*") and findItem files f == 0 do ( append files f; append out o )
+        )
+        out
+    )
+    else
+    (
+        local head = undefined
+        for o in objects while head == undefined where isGroupHead o and matchPattern o.name pattern:(assetName + "_*") do
+            if (trimRight o.name "0123456789") == (assetName + "_") do head = o
+        if head == undefined then #() else olib_withChildren head
+    )
+)
+
+-- Instances of those objects, marked as an import of their own.
+fn olib_instanceOf nodes id kind =
+(
+    local nn = #()
+    maxOps.cloneNodes nodes cloneType:#instance newNodes:&nn
+    if nn.count > 0 do
+    (
+        for n in nn do ( n.isHidden = false; n.isFrozen = false )
+        olib_tag nn id kind
+    )
+    nn
+)
+
 format "OpenLibrary: MAXScript core loaded\n"

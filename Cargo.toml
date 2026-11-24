@@ -25,6 +25,8 @@ serde = { version = "1", features = ["derive"] }
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit"] }
 # Decodes previews and viewport captures, and writes the thumbnail cache.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp", "webp", "tiff", "tga", "exr", "hdr"] }
+# Decodes a large JPEG at a fraction of its size, for the thumbnails.
+jpeg-decoder = { version = "0.3", default-features = false }
 # The file and folder dialogs of Windows.
 rfd = { version = "0.15", default-features = false }
 

@@ -11,12 +11,24 @@ use eframe::egui;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::mpsc::TryRecvError;
 
 pub(super) enum Live {
-    Preview { key: String, out: PathBuf, reply: MaxReply },
-    Scene { reply: MaxReply },
+    Preview {
+        key: String,
+        out: PathBuf,
+        reply: MaxReply,
+    },
+    Scene {
+        reply: MaxReply,
+    },
     Files(Relink),
+    /// A `.max` being opened in the place of the scene.
+    Open {
+        name: String,
+        reply: MaxReply,
+    },
 }
 
 /// Relinking `.max` files one after another.
@@ -53,7 +65,7 @@ impl OpenLibraryApp {
     }
 
     fn relink_dirs(&self, asset: &Asset) -> Vec<PathBuf> {
-        let roots = self.index.as_ref().map(|i| i.roots.clone()).unwrap_or_default();
+        let roots = self.models.index.as_ref().map(|i| i.roots.clone()).unwrap_or_default();
         maxlink::relink_dirs(asset, &roots, &self.extra_dirs())
     }
 
@@ -75,17 +87,19 @@ impl OpenLibraryApp {
     }
 
     /// Looks for the lost files of the open scene in the selected model's folders, or else the folder shown.
-    pub(super) fn relink_scene(&mut self, selected: Option<&Asset>) {
+    pub(super) fn relink_scene(&mut self, selected: &[Arc<Asset>]) {
         let Some(info) = self.free_max() else { return };
-        let dirs = match selected {
-            Some(asset) => self.relink_dirs(asset),
-            None => {
-                let shown = self.side.folder.clone().map(|f| vec![f]);
-                let mut dirs = shown.unwrap_or_else(|| self.index.as_ref().map(|i| i.roots.clone()).unwrap_or_default());
-                dirs.extend(self.extra_dirs());
-                dirs
+        let mut dirs: Vec<PathBuf> = Vec::new();
+        for dir in selected.iter().flat_map(|a| self.relink_dirs(a)) {
+            if !dirs.contains(&dir) {
+                dirs.push(dir);
             }
-        };
+        }
+        if selected.is_empty() {
+            let shown = self.models.side.folder.clone().map(|f| vec![f]);
+            dirs = shown.unwrap_or_else(|| self.models.index.as_ref().map(|i| i.roots.clone()).unwrap_or_default());
+            dirs.extend(self.extra_dirs());
+        }
         if let Some(reply) = self.max.request(&info, "relink_scene", json!({"search_dirs": texts(&dirs)}), self.wake.clone()) {
             self.notice = Some(self.t(Text::RelinkingScene).to_string());
             self.live = Some(Live::Scene { reply });
@@ -93,7 +107,7 @@ impl OpenLibraryApp {
     }
 
     /// Asks before relinking the `.max` of these models, because it writes in the library.
-    pub(super) fn ask_relink(&mut self, assets: &[Asset]) {
+    pub(super) fn ask_relink(&mut self, assets: &[Arc<Asset>]) {
         self.relink_ask = Some(assets.iter().flat_map(|a| a.all_files().into_iter().map(|f| (f.to_path_buf(), a.clone()))).collect());
     }
 
@@ -105,10 +119,10 @@ impl OpenLibraryApp {
             ui.set_max_width(420.0);
             ui.label(text);
             ui.horizontal(|ui| {
-                if ui.button(egui::RichText::new(self.t(Text::Continue)).strong()).clicked() {
+                if crate::kit::button(ui, crate::kit::Kind::Primary, None, self.t(Text::Continue)).clicked() {
                     choice = Some(true);
                 }
-                if ui.button(self.t(Text::Cancel)).clicked() {
+                if crate::kit::button(ui, crate::kit::Kind::Action, None, self.t(Text::Cancel)).clicked() {
                     choice = Some(false);
                 }
             });
@@ -128,6 +142,7 @@ impl OpenLibraryApp {
                 Err(TryRecvError::Empty) => self.live = Some(Live::Preview { key, out, reply }),
                 Ok(Ok(Value::Bool(true))) => {
                     self.textures.remove(&key);
+                    self.big = None;
                     self.rescan(out.parent().map(PathBuf::from));
                     self.notice = Some(self.t(Text::PreviewMade).to_string());
                 }
@@ -140,6 +155,12 @@ impl OpenLibraryApp {
                     let (fixed, missing) = pair(&result);
                     self.notice = Some(fill(self.t(Text::Relinked), &[("fixed", &fixed), ("missing", &missing)]));
                 }
+                Ok(Err(error)) => self.tell(&error),
+                Err(TryRecvError::Disconnected) => {}
+            },
+            Some(Live::Open { name, reply }) => match reply.try_recv() {
+                Err(TryRecvError::Empty) => self.live = Some(Live::Open { name, reply }),
+                Ok(Ok(_)) => self.notice = Some(fill(self.t(Text::Opened), &[("name", &name)])),
                 Ok(Err(error)) => self.tell(&error),
                 Err(TryRecvError::Disconnected) => {}
             },
@@ -167,8 +188,7 @@ impl OpenLibraryApp {
             }
         }
         if let Some((file, dirs)) = relink.queue.pop_front() {
-            self.files.remove(&file); // counted again
-            self.asked.remove(&file.with_extension("files"));
+            self.forget_detail(std::slice::from_ref(&file)); // looked at again
             let args = json!({"max_path": file.display().to_string(), "search_dirs": texts(&dirs)});
             relink.reply = self.max.request(&relink.info, "relink_file", args, self.wake.clone());
             let done = relink.total - relink.queue.len();
@@ -189,26 +209,6 @@ impl OpenLibraryApp {
         self.notice = Some(match error {
             MaxError::Busy => self.t(Text::Busy).to_string(),
             error => fill(self.t(Text::SendFailed), &[("error", error)]),
-        });
-    }
-
-    /// The menu to find lost paths.
-    pub(super) fn relink_menu(&mut self, ui: &mut egui::Ui, selected: Option<Asset>) {
-        ui.menu_button(self.t(Text::Relink), |ui| {
-            if ui.button(self.t(Text::RelinkScene)).clicked() {
-                self.relink_scene(selected.as_ref());
-                ui.close();
-            }
-            if ui.add_enabled(selected.is_some(), egui::Button::new(self.t(Text::RelinkSelected))).clicked() {
-                self.ask_relink(&selected.into_iter().collect::<Vec<_>>());
-                ui.close();
-            }
-            let label = fill(self.t(Text::RelinkAll), &[("count", &self.shown.len())]);
-            if ui.add_enabled(!self.shown.is_empty(), egui::Button::new(label)).clicked() {
-                let all = self.shown.clone();
-                self.ask_relink(&all);
-                ui.close();
-            }
         });
     }
 }

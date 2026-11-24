@@ -2,6 +2,7 @@
 //! The window of the external files a model does not find: each can be pointed at another file or removed, and
 //! nothing changes until they are saved in the `.max`, which a 3ds Max in the background does.
 
+use crate::kit::{Kind, button};
 use crate::maxbatch::{self, Outcome};
 use crate::missing::{self, Change, Edit, State, base_name, folder_name};
 use crate::open3d_settings::Language;
@@ -30,6 +31,15 @@ enum Event {
 enum Ask {
     Save,
     Close,
+}
+
+/// What the menu of a row does.
+#[derive(Clone, Copy)]
+enum Act {
+    Relink,
+    Remove,
+    Undo,
+    Copy,
 }
 
 pub struct MissingWindow {
@@ -205,27 +215,35 @@ impl MissingWindow {
         let junk = self.rows.iter().filter(|r| disposable(r)).count();
         let near = self.rows.iter().filter(|r| r.state == State::Nearby && r.change.is_none()).count();
         ui.horizontal_wrapped(|ui| {
-            if ui.add_enabled(idle && some, egui::Button::new(self.t(Text::MissingRelink))).clicked() {
+            if ui.add_enabled_ui(idle && some, |ui| button(ui, Kind::Action, None, self.t(Text::MissingRelink))).inner.clicked() {
                 self.relink();
             }
-            if ui.add_enabled(idle && !self.rows.is_empty(), egui::Button::new(self.t(Text::MissingSearch))).clicked() {
+            if ui.add_enabled_ui(idle && !self.rows.is_empty(), |ui| button(ui, Kind::Action, None, self.t(Text::MissingSearch))).inner.clicked() {
                 self.search();
             }
-            if ui.add_enabled(idle && near > 0, egui::Button::new(fill(self.t(Text::MissingUseNearby), &[("count", &near)]))).clicked() {
+            if ui
+                .add_enabled_ui(idle && near > 0, |ui| button(ui, Kind::Action, None, &fill(self.t(Text::MissingUseNearby), &[("count", &near)])))
+                .inner
+                .clicked()
+            {
                 for row in self.rows.iter_mut().filter(|r| r.state == State::Nearby && r.change.is_none()) {
                     row.change = missing::nearby(&row.file, &row.stored).map(Change::To);
                 }
             }
-            if ui.add_enabled(idle && some, egui::Button::new(self.t(Text::MissingRemove))).clicked() {
+            if ui.add_enabled_ui(idle && some, |ui| button(ui, Kind::Action, None, self.t(Text::MissingRemove))).inner.clicked() {
                 self.rows.iter_mut().filter(|r| r.selected).for_each(|r| r.change = Some(Change::Remove));
             }
-            if ui.add_enabled(idle && junk > 0, egui::Button::new(fill(self.t(Text::MissingRemoveJunk), &[("count", &junk)]))).clicked() {
+            if ui
+                .add_enabled_ui(idle && junk > 0, |ui| button(ui, Kind::Action, None, &fill(self.t(Text::MissingRemoveJunk), &[("count", &junk)])))
+                .inner
+                .clicked()
+            {
                 self.rows.iter_mut().filter(|r| disposable(r)).for_each(|r| r.change = Some(Change::Remove));
             }
-            if ui.add_enabled(idle && some, egui::Button::new(self.t(Text::Undo))).clicked() {
+            if ui.add_enabled_ui(idle && some, |ui| button(ui, Kind::Action, None, self.t(Text::Undo))).inner.clicked() {
                 self.rows.iter_mut().filter(|r| r.selected).for_each(|r| r.change = None);
             }
-            if ui.add_enabled(!self.rows.is_empty(), egui::Button::new(self.t(Text::CopyList))).clicked() {
+            if ui.add_enabled_ui(!self.rows.is_empty(), |ui| button(ui, Kind::Action, None, self.t(Text::CopyList))).inner.clicked() {
                 let list: Vec<&str> = self.rows.iter().map(|r| r.stored.as_str()).collect();
                 ui.ctx().copy_text(list.join("\n"));
             }
@@ -239,6 +257,13 @@ impl MissingWindow {
         let several = self.files.len() > 1;
         let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
         let mut clicked = None;
+        let mut act = None;
+        let menu = [
+            (self.t(Text::MissingRelink), Act::Relink),
+            (self.t(Text::MissingRemove), Act::Remove),
+            (self.t(Text::Undo), Act::Undo),
+            (self.t(Text::CopyPath), Act::Copy),
+        ];
         egui::ScrollArea::vertical().auto_shrink(false).max_height(360.0).show_rows(ui, height, count, |ui, range| {
             for i in range {
                 let row = &self.rows[i];
@@ -269,9 +294,35 @@ impl MissingWindow {
                 if response.clicked() {
                     clicked = Some(i);
                 }
+                if response.double_clicked() {
+                    act = Some((i, Act::Relink));
+                }
+                response.context_menu(|ui| {
+                    for (text, what) in &menu {
+                        if ui.button(*text).clicked() {
+                            act = Some((i, *what));
+                        }
+                    }
+                });
                 response.on_hover_text(format!("{}\n{state}", row.stored));
             }
         });
+        if let Some((i, act)) = act.filter(|_| self.task.is_none()) {
+            if !self.rows[i].selected {
+                self.rows.iter_mut().enumerate().for_each(|(n, r)| r.selected = n == i);
+            }
+            let selected = self.rows.iter_mut().filter(|r| r.selected);
+            match act {
+                Act::Relink => self.relink(),
+                Act::Remove => selected.for_each(|r| r.change = Some(Change::Remove)),
+                Act::Undo => selected.for_each(|r| r.change = None),
+                Act::Copy => {
+                    let list: Vec<&str> = self.rows.iter().filter(|r| r.selected).map(|r| r.stored.as_str()).collect();
+                    ui.ctx().copy_text(list.join("\n"));
+                }
+            }
+            return;
+        }
         if let Some(i) = clicked {
             let anchor = self.rows.iter().position(|r| r.selected).filter(|_| shift).unwrap_or(i);
             let range = anchor.min(i)..=anchor.max(i);
@@ -300,13 +351,13 @@ impl MissingWindow {
         };
         ui.label(text);
         ui.horizontal(|ui| {
-            if ui.button(egui::RichText::new(self.t(Text::Continue)).strong()).clicked() {
+            if button(ui, Kind::Primary, None, self.t(Text::Continue)).clicked() {
                 match self.ask.take() {
                     Some(Ask::Save) => self.save(),
                     _ => answer.close = true,
                 }
             }
-            if ui.button(self.t(Text::Cancel)).clicked() {
+            if button(ui, Kind::Action, None, self.t(Text::Cancel)).clicked() {
                 self.ask = None;
             }
         });
@@ -337,12 +388,13 @@ impl MissingWindow {
             ui.label(egui::RichText::new(&self.status).small());
             ui.horizontal(|ui| {
                 let pending = self.pending().len();
-                let save = egui::Button::new(egui::RichText::new(fill(self.t(Text::MissingSave), &[("count", &pending)])).strong());
-                if ui.add_enabled(pending > 0 && self.task.is_none(), save).clicked() {
+                let save = fill(self.t(Text::MissingSave), &[("count", &pending)]);
+                let can = pending > 0 && self.task.is_none();
+                if ui.add_enabled_ui(can, |ui| button(ui, Kind::Primary, None, &save)).inner.clicked() {
                     self.ask = Some(Ask::Save);
                 }
                 // closing in the middle of a save would leave the .max half done
-                if ui.add_enabled(self.saving.is_empty(), egui::Button::new(self.t(Text::Close))).clicked() {
+                if ui.add_enabled_ui(self.saving.is_empty(), |ui| button(ui, Kind::Action, None, self.t(Text::Close))).inner.clicked() {
                     if pending > 0 {
                         self.ask = Some(Ask::Close);
                     } else {

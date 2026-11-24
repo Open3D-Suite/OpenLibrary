@@ -216,7 +216,7 @@ fn tokens(path: &str) -> Vec<Token> {
 }
 
 /// An SVG path as lines: M, L, H, V, C, A and Z, absolute and relative.
-fn lines_of(path: &str) -> Lines {
+pub(crate) fn lines_of(path: &str) -> Lines {
     let mut out: Lines = Vec::new();
     let mut at = Pos2::ZERO;
     let mut start = Pos2::ZERO;

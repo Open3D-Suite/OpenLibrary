@@ -516,6 +516,11 @@ impl EngineCache {
         data.get(&crate::library::norm_key(file)).filter(|r| r.0 == secs && r.1 == size).map(|r| r.2)
     }
 
+    /// The renderer last known for a file, without asking the disk whether it has changed.
+    pub fn peek(&self, file: &Path) -> Option<Engine> {
+        self.data.lock().ok()?.get(&crate::library::norm_key(file)).map(|r| r.2)
+    }
+
     /// The renderer of a file: known, or read now and kept.
     pub fn detect(&self, file: &Path) -> Engine {
         if let Some(engine) = self.get(file) {

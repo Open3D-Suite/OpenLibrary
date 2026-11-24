@@ -67,7 +67,7 @@ impl Channel {
             Self::Disp => ("DS", [0xC2, 0x21, 0x8B]),
             Self::Ao => ("AO", [0x1E, 0x9B, 0xD7]),
             Self::Opacity => ("Op", [0xD9, 0x79, 0x2B]),
-            Self::Emission => ("Em", [0xB8, 0xA2, 0x20]),
+            Self::Emission => ("Em", [0xD8, 0xC0, 0x2E]),
             Self::Transl => ("Tr", [0x3F, 0xA7, 0xA0]),
         }
     }
@@ -77,12 +77,12 @@ impl Channel {
             "col" | "color" | "colour" | "albedo" | "alb" | "basecolor" | "basecolour" | "diffuse" | "diff" | "dif" | "difuse" => Self::Color,
             "roughness" | "rough" | "rgh" => Self::Rough,
             "gloss" | "glossiness" | "glossy" => Self::Gloss,
-            "refl" | "reflection" | "reflect" | "specular" | "spec" => Self::Refl,
+            "refl" | "ref" | "reflection" | "reflect" | "specular" | "spec" => Self::Refl,
             "metallic" | "metalness" | "metal" | "mtl" => Self::Metal,
             "normal" | "nrm" | "nor" | "norm" | "normalmap" | "nrml" => Self::Normal,
             "bump" | "bmp" => Self::Bump,
             "disp" | "displacement" | "displace" | "height" | "dsp" | "depth" | "heightlacement" => Self::Disp,
-            "ao" | "ambientocclusion" | "occlusion" | "occ" => Self::Ao,
+            "ao" | "ambientocclusion" | "ambientoclusion" | "occlusion" | "occ" => Self::Ao,
             "opacity" | "alpha" | "opc" | "cutout" | "alphamasked" => Self::Opacity,
             "emissive" | "emission" | "emit" | "selfillum" => Self::Emission,
             "translucency" | "translucent" | "sss" => Self::Transl,
@@ -178,10 +178,28 @@ fn channel_at(low: &[String], i: usize) -> Option<(Channel, usize, bool)> {
     word.strip_suffix("map").and_then(Channel::from_word).map(|c| (c, 1, deep))
 }
 
+/// Whether the last word is how the whole set was made ("..._COL_4K_METALNESS", "..._basecolor_METALNESS") and not what
+/// this map is: the channel is before, and the word comes after a resolution or in capitals.
+fn is_workflow(words: &[String]) -> bool {
+    let low: Vec<String> = words.iter().map(|t| t.to_lowercase()).collect();
+    let [.., before, last] = &low[..] else { return false };
+    let capitals = words.last().is_some_and(|w| !w.bytes().any(|b| b.is_ascii_lowercase()));
+    if !["metalness", "specular"].contains(&last.as_str()) || !(capitals || resolution(before) > 0) {
+        return false;
+    }
+    let skipped = |w: &String| resolution(w) > 0 || w.strip_prefix("var").is_some_and(is_digits);
+    let channel = low[..low.len() - 1].iter().rposition(|w| !skipped(w)).filter(|i| *i > 0);
+    // words that are often part of the name of a material
+    channel.is_some_and(|i| !["metal", "glossy"].contains(&low[i].as_str()) && channel_at(&low, i).is_some())
+}
+
 /// Takes the name of an image apart.
 pub fn parse_name(file: &str) -> Parsed {
     let (stem, ext) = split_ext(file);
-    let tokens = words(stem);
+    let mut tokens = words(stem);
+    if is_workflow(&tokens) {
+        tokens.pop();
+    }
     let low: Vec<String> = tokens.iter().map(|t| t.to_lowercase()).collect();
     let mut out = Parsed { base: String::new(), channel: None, res: 0, deep: ext == "exr" || ext == "hdr", variant: 0, dx: false };
     let mut cut = tokens.len(); // from here on: channel, resolution and noise
@@ -502,6 +520,12 @@ fn merge_planks(groups: &mut BTreeMap<GroupKey, Group>) {
             continue;
         }
         members.sort();
+        // the planks of a floor are together: those numbered that have a folder each are materials of their own
+        let beside = members.first().and_then(|(_, k)| groups.get(k)).map(|g| g.sources.clone()).unwrap_or_default();
+        members.retain(|(_, k)| groups.get(k).is_some_and(|g| g.sources.iter().any(|f| beside.contains(f))));
+        if members.len() < 4 {
+            continue;
+        }
         let mtime = members.iter().filter_map(|(_, k)| groups.get(k)).map(|g| g.mtime).max().unwrap_or(0);
         let mut first: Option<Group> = None;
         for (_, key) in &members {
@@ -514,6 +538,78 @@ fn merge_planks(groups: &mut BTreeMap<GroupKey, Group>) {
             groups.insert((folder, format!("{stem}|tiles")), group);
         }
     }
+}
+
+/// The maps that one letter tells ("Asphalt-D", "Asphalt-B", "Asphalt-G"), when several of a name are in a folder.
+fn add_letters(groups: &mut BTreeMap<GroupKey, Group>, listing: &Listing) {
+    const LETTERS: [&str; 7] = ["b", "c", "d", "dis", "g", "n", "r"];
+    for (folder, listed) in listing {
+        let mut found: BTreeMap<String, Vec<(String, &str, u64)>> = BTreeMap::new();
+        for (file, mtime) in listed.files.iter().filter(|(f, _)| IMAGES.contains(&split_ext(f).1.as_str())) {
+            let mut tokens = words(split_ext(file).0);
+            let Some(last) = tokens.pop().filter(|t| t.len() == 1 || t.eq_ignore_ascii_case("dis")) else { continue };
+            if !tokens.is_empty() {
+                found.entry(tokens.join(" ")).or_default().push((last.to_lowercase(), file, *mtime));
+            }
+        }
+        for (base, files) in found {
+            let letters: HashSet<&str> = files.iter().map(|f| f.0.as_str()).collect();
+            let color = if letters.contains("c") { "c" } else { "d" };
+            let key = (key_of(folder), base.to_lowercase());
+            // other letters tell one image from another, not its maps
+            if letters.len() < 2 || !letters.contains(color) || !letters.iter().all(|l| LETTERS.contains(l)) || groups.contains_key(&key) {
+                continue;
+            }
+            let mut group =
+                Group { name: base.clone(), folder: folder.clone(), files: Vec::new(), mtime: 0, sources: HashSet::from([folder.clone()]), tiles: 0 };
+            for (letter, file, mtime) in files {
+                let channel = match letter.as_str() {
+                    l if l == color => Channel::Color,
+                    "d" | "dis" => Channel::Disp,
+                    "b" => Channel::Bump,
+                    "g" => Channel::Gloss,
+                    "n" => Channel::Normal,
+                    _ => Channel::Refl,
+                };
+                group.files.push((folder.join(file), Parsed { base: base.clone(), channel: Some(channel), ..parse_name(file) }));
+                group.mtime = group.mtime.max(mtime);
+            }
+            groups.insert(key, group);
+        }
+    }
+}
+
+/// The colours of a set that share its other maps ("Oak_Red_Albedo" and "Oak_White_Albedo" with "Oak_Normal") get
+/// them, each a material; the set itself goes when it has no colour of its own.
+fn share_maps(groups: &mut BTreeMap<GroupKey, Group>) {
+    let has = |g: &Group, color: bool| g.files.iter().any(|(_, p)| (p.channel == Some(Channel::Color)) == color);
+    let mut shared: Vec<(GroupKey, GroupKey)> = Vec::new();
+    for (key, group) in groups.iter().filter(|(_, g)| g.tiles == 0 && !has(g, false)) {
+        let mut host = key.1.as_str();
+        while let Some((shorter, _)) = host.rsplit_once(' ') {
+            host = shorter;
+            let found = (key.0.clone(), host.to_string());
+            // a name of one word is too little to tell
+            if host.contains(' ') && groups.get(&found).is_some_and(|h| h.tiles == 0 && has(h, false)) && !group.files.is_empty() {
+                shared.push((key.clone(), found));
+                break;
+            }
+        }
+    }
+    let mut bare: HashSet<GroupKey> = HashSet::new();
+    for (key, host_key) in shared {
+        let Some(host) = groups.get(&host_key) else { continue };
+        let maps: Vec<_> = host.files.iter().filter(|(_, p)| p.channel != Some(Channel::Color)).cloned().collect();
+        let sources = host.sources.clone();
+        if !has(host, true) {
+            bare.insert(host_key);
+        }
+        if let Some(group) = groups.get_mut(&key) {
+            group.files.extend(maps);
+            group.sources.extend(sources);
+        }
+    }
+    groups.retain(|key, _| !bare.contains(key));
 }
 
 /// Whether `a` (path, deep) is better than `b` for a channel: 16 bits for displacement, 8 for the rest.
@@ -576,16 +672,18 @@ pub fn build_materials(listing: &Listing) -> Vec<Material> {
         }
     }
     merge_planks(&mut groups);
-    let mut out = Vec::new();
-    for (key, mut group) in groups {
-        let mut channels: HashSet<Channel> = group.files.iter().filter_map(|(_, p)| p.channel).collect();
-        if group.tiles == 0 && !channels.contains(&Channel::Color) {
-            // "Oak.jpg" beside "Oak_BUMP.jpg" and "Oak_GLOSS.jpg" is the colour
-            for (path, parsed) in plain.get(&key).into_iter().flatten() {
-                group.files.push((path.clone(), Parsed { channel: Some(Channel::Color), ..parsed.clone() }));
-                channels.insert(Channel::Color);
-            }
+    add_letters(&mut groups, listing);
+    for (key, group) in &mut groups {
+        // "Oak.jpg" beside "Oak_BUMP.jpg" and "Oak_GLOSS.jpg" is the colour
+        if group.tiles == 0 && !group.files.iter().any(|(_, p)| p.channel == Some(Channel::Color)) {
+            let found = plain.get(key).into_iter().flatten();
+            group.files.extend(found.map(|(path, p)| (path.clone(), Parsed { channel: Some(Channel::Color), ..p.clone() })));
         }
+    }
+    share_maps(&mut groups);
+    let mut out = Vec::new();
+    for (_, mut group) in groups {
+        let channels: HashSet<Channel> = group.files.iter().filter_map(|(_, p)| p.channel).collect();
         if channels.len() < 2 {
             continue; // one image that says a channel is not a material
         }
@@ -635,8 +733,11 @@ fn find_preview(material: &Material, loose: &Loose, listing: &Listing) -> Option
     if let Some((_, _, path)) = sample {
         return Some(path.clone());
     }
-    let parent = material.folder.parent()?;
-    let folder = name_of(&material.folder);
+    // "Steel001\METALNESS\4K": the folder of the material is the one above how it was made
+    let made = ["metalness", "specular", "regular"].contains(&name_of(&material.folder).to_lowercase().as_str());
+    let own = if made { material.folder.parent()? } else { &material.folder };
+    let parent = own.parent()?;
+    let folder = name_of(own);
     let side = loose.get(&key_of(parent)).unwrap_or(&empty);
     let wanted = [squash(&folder), squash(&material.name)];
     let hit = side.get(&folder.to_lowercase()).or_else(|| side.iter().find(|(stem, _)| wanted.contains(&squash(stem))).map(|(_, p)| p)).cloned();
@@ -1006,6 +1107,42 @@ mod tests {
     }
 
     #[test]
+    fn a_set_named_after_how_it_was_made_is_one_material() {
+        let maps = ["Cast001_COL_4K_METALNESS.jpg", "Cast001_NRM_4K_METALNESS.jpg", "Cast001_ROUGHNESS_4K_METALNESS.jpg"];
+        let all = build_materials(&listing(&[(r"B:\M", &["Cast001.jpg"]), (r"B:\M\Cast001\METALNESS\4K", &maps)]));
+        assert_eq!((all.len(), all[0].name.as_str(), all[0].channels().len()), (1, "Cast001", 3));
+        assert!(ends(all[0].preview.as_ref(), "Cast001.jpg"));
+    }
+
+    #[test]
+    fn numbered_materials_with_a_folder_each_are_not_planks() {
+        let names: Vec<(String, [String; 2])> =
+            (1..=5).map(|n| (format!(r"B:\S\Road00{n}_6k"), [format!("Road00{n}_COL_6K.jpg"), format!("Road00{n}_NRM_6K.jpg")])).collect();
+        let files: Vec<[&str; 2]> = names.iter().map(|(_, f)| [f[0].as_str(), f[1].as_str()]).collect();
+        let tree: Vec<(&str, &[&str])> = names.iter().zip(&files).map(|((d, _), f)| (d.as_str(), f.as_slice())).collect();
+        let all = build_materials(&listing(&tree));
+        assert_eq!((all.len(), all.iter().map(|m| m.tiles).sum::<usize>()), (5, 0));
+    }
+
+    #[test]
+    fn the_colours_of_a_set_share_its_maps() {
+        let files = ["Oak_Wood_Red_Albedo_4K.jpg", "Oak_Wood_White_Albedo_4K.jpg", "Oak_Wood_Normal_4K.jpg", "Oak_Wood_Roughness_4K.jpg"];
+        let all = build_materials(&listing(&[(r"B:\O", &files)]));
+        let names: Vec<(&str, usize)> = all.iter().map(|m| (m.name.as_str(), m.channels().len())).collect();
+        assert_eq!(names, [("Oak Wood Red", 3), ("Oak Wood White", 3)]);
+        let with = build_materials(&listing(&[(r"B:\O", &["Oak_Wood_Albedo.jpg", "Oak_Wood_Normal.jpg", "Oak_Wood_Aged_Albedo.jpg"])]));
+        assert_eq!(with.len(), 2);
+    }
+
+    #[test]
+    fn one_letter_may_tell_the_map() {
+        let all = build_materials(&listing(&[(r"B:\F", &["FSA_Cuero-B.png", "FSA_Cuero-D.png", "FSA_Cuero-G.png", "FSA_Cuero-N.png"])]));
+        assert_eq!((all.len(), all[0].channels().len()), (1, 4));
+        let letters = ["Floor-A.jpg", "Floor-B.jpg", "Floor-C.jpg", "Floor-D.jpg", "Floor-E.jpg"];
+        assert!(build_materials(&listing(&[(r"B:\F", &letters)])).is_empty());
+    }
+
+    #[test]
     fn channels_and_resolutions_are_told_by_the_name() {
         let cases = [
             ("WoodFlooring065_COL_4K.jpg", Channel::Color, 4),
@@ -1019,6 +1156,13 @@ mod tests {
             ("Poliigon_Facade_10956_heightlacement.tiff", Channel::Disp, 0),
             ("Metal_Plate_Base_Color.png", Channel::Color, 0),
             ("LARGE_STAINS_08_NORM_8_bits.tiff", Channel::Normal, 0),
+            ("MetalAluminumCast001_COL_4K_METALNESS.jpg", Channel::Color, 4),
+            ("MetalAluminumCast001_METALNESS_4K_METALNESS.jpg", Channel::Metal, 4),
+            ("MetalAluminum001_GLOSS_VAR1_4K_SPECULAR.jpg", Channel::Gloss, 4),
+            ("RammedEarth019_ambientoclusion_METALNESS.png", Channel::Ao, 0),
+            ("QuartzFusion002_METALNESS_METALNESS.png", Channel::Metal, 0),
+            ("Rusty_Metal_4K_Specular.jpg", Channel::Refl, 4),
+            ("Copper_Plate_METALNESS.jpg", Channel::Metal, 0),
         ];
         for (name, channel, res) in cases {
             let p = parse_name(name);

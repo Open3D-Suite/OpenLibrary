@@ -91,16 +91,16 @@ pub fn visible(folders: &[Folder], expanded: &HashSet<String>, filter: &str) -> 
     (0..folders.len()).filter(|&i| show[i]).collect()
 }
 
-/// How many items are in each folder and the folders in it, from the folder of each item.
-pub fn totals<'a>(roots: &[PathBuf], items: impl Iterator<Item = &'a Path>) -> HashMap<String, usize> {
+/// How many items are in each folder and the folders in it, from the folder of each item as [`norm_key`] gives it.
+pub fn totals<'a>(roots: &[PathBuf], items: impl Iterator<Item = &'a str>) -> HashMap<String, usize> {
     let roots: HashSet<String> = roots.iter().map(|r| norm_key(r)).collect();
-    let mut direct: HashMap<PathBuf, usize> = HashMap::new();
+    let mut direct: HashMap<&str, usize> = HashMap::new();
     for folder in items {
-        *direct.entry(folder.to_path_buf()).or_default() += 1;
+        *direct.entry(folder).or_default() += 1;
     }
     let mut out = HashMap::new();
     for (folder, count) in direct {
-        for at in folder.ancestors() {
+        for at in Path::new(folder).ancestors() {
             let key = norm_key(at);
             let root = roots.contains(&key);
             *out.entry(key).or_default() += count;
@@ -120,6 +120,27 @@ enum Done {
     HideName(String),
     Reveal(PathBuf),
     CloseAll,
+    OpenInside(PathBuf),
+    Unhide(Option<Hidden>),
+    Action(TreeAction),
+}
+
+/// A hidden folder: all of a name, or one.
+#[derive(Clone)]
+enum Hidden {
+    Name(String),
+    Path(PathBuf),
+}
+
+/// What the window does for the tree.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TreeAction {
+    /// Look for changes in the folders.
+    Rescan,
+    /// Write the names to hide.
+    HideNames,
+    /// A new folder in this one.
+    NewFolder(PathBuf),
 }
 
 /// A folder's icon and menu come from the settings; without them there are none.
@@ -143,17 +164,23 @@ fn draw(
     marks: Marks<'_>,
 ) -> Option<Done> {
     let list = visible(folders, expanded, filter);
-    let height = ui.spacing().interact_size.y;
+    let height = ui.spacing().interact_size.y.max(26.0);
+    let p = crate::kit::pal(ui);
     let current = chosen.map(norm_key);
     let mut done = None;
     egui::ScrollArea::both().id_salt(id).auto_shrink(false).show_rows(ui, height, list.len(), |ui, range| {
         for &i in &list[range] {
             let folder = &folders[i];
             ui.horizontal(|ui| {
+                ui.set_height(height);
+                ui.spacing_mut().item_spacing.x = 3.0;
                 ui.add_space(folder.depth as f32 * 14.0);
                 let open = expanded.contains(&folder.key);
                 if folder.kids {
-                    if ui.small_button(if open { "−" } else { "+" }).clicked() {
+                    let (square, arrow) = ui.allocate_exact_size(egui::Vec2::splat(18.0), egui::Sense::click());
+                    let color = if arrow.hovered() { p.text } else { p.faint };
+                    crate::kit::paint_icon(ui.painter(), square.shrink(3.0), if open { "down" } else { "right" }, color);
+                    if arrow.clicked() {
                         if ui.input(|i| i.modifiers.shift) {
                             done = Some(Done::CloseAll);
                         } else if open {
@@ -163,7 +190,7 @@ fn draw(
                         }
                     }
                 } else {
-                    ui.add_space(18.0);
+                    ui.allocate_exact_size(egui::Vec2::splat(18.0), egui::Sense::hover());
                 }
                 if let Some((settings, _)) = marks {
                     let (icon, color) = foldericons::mark(settings, &folder.key);
@@ -171,14 +198,27 @@ fn draw(
                     let color = color.and_then(foldericons::color).unwrap_or(ui.visuals().weak_text_color());
                     foldericons::paint(ui.painter(), rect, icon.unwrap_or_else(|| foldericons::guess(&folder.name)), color);
                 }
-                let label = folder.count.map_or_else(|| folder.name.clone(), |n| format!("{}  ({n})", folder.name));
-                let response = ui.selectable_label(current.as_ref() == Some(&folder.key), label);
+                let on = current.as_ref() == Some(&folder.key);
+                let mut label = egui::text::LayoutJob::default();
+                let format = |size: f32, color| egui::TextFormat::simple(egui::FontId::proportional(size), color);
+                label.append(&folder.name, 0.0, format(13.5, if on { p.accent } else { p.text }));
+                if let Some(count) = folder.count {
+                    label.append(&count.to_string(), 8.0, format(11.5, p.faint));
+                }
+                let response = ui.selectable_label(on, label);
+                if response.double_clicked() && folder.kids {
+                    if open {
+                        expanded.remove(&folder.key)
+                    } else {
+                        expanded.insert(folder.key.clone())
+                    };
+                }
                 if response.clicked() {
                     done = Some(Done::Chosen(folder.path.clone()));
                 }
-                if let Some((_, lang)) = marks {
+                if let Some((settings, lang)) = marks {
                     response.context_menu(|ui| {
-                        if let Some(chosen) = menu(ui, folder, lang) {
+                        if let Some(chosen) = menu(ui, folder, settings, lang) {
                             done = Some(chosen);
                             ui.close();
                         }
@@ -186,11 +226,60 @@ fn draw(
                 }
             });
         }
+        // the menu of the tree itself, where there are no folders
+        let rest = ui.available_rect_before_wrap();
+        if let Some((settings, lang)) = marks
+            && rest.height() > 8.0
+        {
+            ui.interact(rest, ui.scope_id().with("tree-rest"), egui::Sense::click()).context_menu(|ui| {
+                if let Some(chosen) = common_menu(ui, settings, lang) {
+                    done = Some(chosen);
+                    ui.close();
+                }
+            });
+        }
     });
     done
 }
 
-fn menu(ui: &mut egui::Ui, folder: &Folder, lang: Language) -> Option<Done> {
+/// What the menu has wherever it is opened.
+fn common_menu(ui: &mut egui::Ui, settings: &Settings, lang: Language) -> Option<Done> {
+    let mut done = None;
+    let (names, paths) = settings.hidden();
+    if !names.is_empty() || !paths.is_empty() {
+        let text = crate::texts::fill(Text::FoldersHidden.get(lang), &[("count", &(names.len() + paths.len()))]);
+        ui.menu_button(text, |ui| {
+            egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                for name in names {
+                    if ui.button(crate::texts::fill(Text::FolderShowName.get(lang), &[("name", &name)])).clicked() {
+                        done = Some(Done::Unhide(Some(Hidden::Name(name))));
+                    }
+                }
+                for path in paths {
+                    let text = crate::texts::fill(Text::FolderShowAgain.get(lang), &[("name", &file_name(&path))]);
+                    if ui.button(text).on_hover_text(path.display().to_string()).clicked() {
+                        done = Some(Done::Unhide(Some(Hidden::Path(path))));
+                    }
+                }
+            });
+            ui.separator();
+            if ui.button(Text::FolderShowAll.get(lang)).clicked() {
+                done = Some(Done::Unhide(None));
+            }
+        });
+    }
+    if ui.button(Text::HideNames.get(lang)).clicked() {
+        done = Some(Done::Action(TreeAction::HideNames));
+    }
+    ui.separator();
+    if ui.button(Text::RefreshQuick.get(lang)).clicked() {
+        done = Some(Done::Action(TreeAction::Rescan));
+    }
+    done
+}
+
+fn menu(ui: &mut egui::Ui, folder: &Folder, settings: &Settings, lang: Language) -> Option<Done> {
+    ui.set_min_width(240.0);
     let mut done = None;
     ui.menu_button(Text::FolderColor.get(lang), |ui| {
         for (hex, text) in foldericons::COLORS {
@@ -220,6 +309,9 @@ fn menu(ui: &mut egui::Ui, folder: &Folder, lang: Language) -> Option<Done> {
     if ui.button(Text::FolderReveal.get(lang)).clicked() {
         done = Some(Done::Reveal(folder.path.clone()));
     }
+    if ui.button(Text::CatalogNewFolder.get(lang)).clicked() {
+        done = Some(Done::Action(TreeAction::NewFolder(folder.path.clone())));
+    }
     if folder.parent.is_some() {
         ui.separator();
         if ui.button(Text::FolderHide.get(lang)).clicked() {
@@ -230,7 +322,21 @@ fn menu(ui: &mut egui::Ui, folder: &Folder, lang: Language) -> Option<Done> {
             done = Some(Done::HideName(folder.name.clone()));
         }
     }
-    done
+    ui.separator();
+    if folder.kids && ui.button(Text::FolderOpenInside.get(lang)).clicked() {
+        done = Some(Done::OpenInside(folder.path.clone()));
+    }
+    common_menu(ui, settings, lang).or(done)
+}
+
+/// A row above the folders.
+fn special(ui: &mut egui::Ui, on: bool, name: &str, count: usize) -> bool {
+    let p = crate::kit::pal(ui);
+    let mut label = egui::text::LayoutJob::default();
+    let format = |font, color| egui::TextFormat::simple(font, color);
+    label.append(name, 0.0, format(crate::kit::strong(13.5), if on { p.accent } else { p.text }));
+    label.append(&count.to_string(), 8.0, format(egui::FontId::proportional(11.5), p.faint));
+    ui.selectable_label(on, label).clicked()
 }
 
 /// The tree at the left of a tab: the favourites, everything, and the folders.
@@ -251,23 +357,18 @@ pub struct Changed {
     pub shown: bool,
     /// The settings: what is hidden, or the icons.
     pub settings: bool,
+    pub action: Option<TreeAction>,
 }
 
 impl SideTree {
     /// Draws it. `counts`: how many favourites there are, and how many items.
     pub fn show(&mut self, ui: &mut egui::Ui, id: &str, settings: &mut Settings, lang: Language, view: TabView, counts: (usize, usize)) -> Changed {
         let mut out = Changed::default();
-        if view.favorites {
-            let text = format!("{}  ({})", Text::Favorites.get(lang), counts.0);
-            if ui.selectable_label(self.favorites, text).clicked() {
-                (self.favorites, self.folder, out.shown) = (true, None, true);
-            }
+        if view.favorites && special(ui, self.favorites, Text::Favorites.get(lang), counts.0) {
+            (self.favorites, self.folder, out.shown) = (true, None, true);
         }
-        if view.all {
-            let text = format!("{}  ({})", Text::AllFolders.get(lang), counts.1);
-            if ui.selectable_label(!self.favorites && self.folder.is_none(), text).clicked() {
-                (self.favorites, self.folder, out.shown) = (false, None, true);
-            }
+        if view.all && special(ui, !self.favorites && self.folder.is_none(), Text::AllFolders.get(lang), counts.1) {
+            (self.favorites, self.folder, out.shown) = (false, None, true);
         }
         match draw(ui, id, &self.folders, &mut self.expanded, "", self.folder.as_deref(), Some((settings, lang))) {
             None => return out,
@@ -283,6 +384,20 @@ impl SideTree {
                 crate::platform::reveal(&path);
                 return out;
             }
+            Some(Done::OpenInside(path)) => {
+                let key = norm_key(&path);
+                let prefix = format!("{}\\", key.trim_end_matches('\\'));
+                let inside = |k: &String| *k == key || k.starts_with(&prefix);
+                self.expanded.extend(self.folders.iter().filter(|f| f.kids).map(|f| f.key.clone()).filter(inside));
+                return out;
+            }
+            Some(Done::Action(action)) => {
+                out.action = Some(action);
+                return out;
+            }
+            Some(Done::Unhide(None)) => settings.show_hidden(None, None),
+            Some(Done::Unhide(Some(Hidden::Name(name)))) => settings.show_hidden(Some(&name), None),
+            Some(Done::Unhide(Some(Hidden::Path(path)))) => settings.show_hidden(None, Some(&path)),
             Some(Done::Mark(path, what, value)) => foldericons::set_mark(settings, &path, what, value),
             Some(Done::Hide(path)) => settings.hide_path(&path),
             Some(Done::HideName(name)) => settings.hide_name(&name),
@@ -309,8 +424,8 @@ mod tests {
 
     #[test]
     fn items_are_counted_up_to_their_root() {
-        let items = ["S:\\Lib\\Chairs\\Oak", "S:\\Lib\\Chairs\\Oak", "S:\\Lib\\Chairs"].map(PathBuf::from);
-        let totals = totals(&["S:\\Lib".into()], items.iter().map(PathBuf::as_path));
+        let items = ["S:\\Lib\\Chairs\\Oak", "S:\\Lib\\Chairs\\Oak", "S:\\Lib\\Chairs"].map(|f| norm_key(Path::new(f)));
+        let totals = totals(&["S:\\Lib".into()], items.iter().map(String::as_str));
         let of = |path: &str| totals.get(&norm_key(Path::new(path))).copied();
         assert_eq!((of("S:\\Lib"), of("S:\\Lib\\Chairs"), of("S:\\Lib\\Chairs\\Oak"), of("S:\\")), (Some(3), Some(3), Some(2), None));
     }
