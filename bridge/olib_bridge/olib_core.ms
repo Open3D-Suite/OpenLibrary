@@ -44,11 +44,10 @@ fn olib_sceneEngine =
     else "other"
 )
 
--- The bridge learns of changes through callbacks, not by asking every second. The Python text is fixed:
--- nothing read from a file or a request goes into it.
+-- The bridge learns of changes through callbacks, not by asking every second. No Python is built from text.
 fn olib_stateChanged =
 (
-    try ( python.execute "import olib_bridge.server as _olib_server\n_olib_server.refresh_state()" ) catch ()
+    try ( (python.import "olib_bridge").refresh_state() ) catch ()
 )
 
 fn olib_watchState enable =

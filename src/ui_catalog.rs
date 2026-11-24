@@ -237,6 +237,7 @@ impl CatalogWindow {
                         String::new()
                     }
                     ArchiveError::NoTool => self.t(Text::CatalogNoTool).to_string(),
+                    ArchiveError::TooLarge => self.t(Text::CatalogTooLarge).to_string(),
                     ArchiveError::Incomplete => self.t(Text::CatalogIncomplete).to_string(),
                     ArchiveError::Cancelled => self.t(Text::Cancelled).to_string(),
                     ArchiveError::Failed(error) => fill(self.t(Text::CatalogOpenFailed), &[("error", &error)]),

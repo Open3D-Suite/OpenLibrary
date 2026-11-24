@@ -65,13 +65,33 @@ fn files_under(folder: &Path) -> HashMap<String, PathBuf> {
     out
 }
 
-/// The external files of a `.max`, one per stored path.
-pub fn externals(max: &Path) -> Vec<External> {
-    let base = max.parent().unwrap_or(Path::new(""));
-    externals_from(base, maxfile::read_assets(max))
+/// The computer of a network path (two slashes, then its name), in lower case; `None` for any other path. What is not
+/// a plain server (`?`, `.`, `server@SSL`) keeps its signs, so that no known server is called so.
+fn host(path: &str) -> Option<String> {
+    let rest = path.strip_prefix(['\\', '/'])?.strip_prefix(['\\', '/'])?;
+    Some(rest.split(['\\', '/']).next().unwrap_or_default().to_lowercase())
 }
 
-fn externals_from(base: &Path, assets: Vec<maxfile::Asset>) -> Vec<External> {
+/// The computers the person's own folders are on: the libraries, the folder of the `.max` and the drives.
+fn known_hosts(max: &Path, roots: &[PathBuf]) -> HashSet<String> {
+    let mut out: HashSet<String> = roots.iter().map(PathBuf::as_path).chain([max]).filter_map(|p| host(&p.to_string_lossy())).collect();
+    out.extend(crate::platform::mapped_shares().iter().filter_map(|s| host(s)));
+    out
+}
+
+/// Whether a path read from a file may be looked at: asking for one on an unknown computer would make Windows
+/// sign in to it.
+fn may_look(path: &str, hosts: &HashSet<String>) -> bool {
+    host(path).is_none_or(|h| hosts.contains(&h))
+}
+
+/// The external files of a `.max`, one per stored path; `roots` are the folders of the person's libraries.
+pub fn externals(max: &Path, roots: &[PathBuf]) -> Vec<External> {
+    let base = max.parent().unwrap_or(Path::new(""));
+    externals_from(base, maxfile::read_assets(max), &known_hosts(max, roots))
+}
+
+fn externals_from(base: &Path, assets: Vec<maxfile::Asset>, hosts: &HashSet<String>) -> Vec<External> {
     let mut seen = HashSet::new();
     let mut nearby: Option<HashMap<String, PathBuf>> = None;
     let mut out = Vec::new();
@@ -80,9 +100,9 @@ fn externals_from(base: &Path, assets: Vec<maxfile::Asset>) -> Vec<External> {
             continue;
         }
         let stored = Path::new(&asset.stored);
-        let found = (stored.is_absolute() && stored.is_file())
-            || (!stored.is_absolute() && base.join(stored).is_file())
-            || (!asset.resolved.is_empty() && Path::new(&asset.resolved).is_file());
+        let there = |path: &Path| may_look(&path.to_string_lossy(), hosts) && path.is_file();
+        let found = there(&if stored.is_absolute() { stored.to_path_buf() } else { base.join(stored) })
+            || (!asset.resolved.is_empty() && there(Path::new(&asset.resolved)));
         let state = if found {
             State::Found
         } else if nearby.get_or_insert_with(|| files_under(base)).contains_key(&base_name(&asset.stored).to_lowercase()) {
@@ -192,10 +212,22 @@ mod tests {
         std::fs::write(dir.join("here.jpg"), b"x").unwrap();
         std::fs::write(dir.join("maps").join("Oak.JPG"), b"x").unwrap();
         let list = ["here.jpg", r"Q:\old\oak.jpg", r"Q:\old\OAK.jpg", r"Q:\old\gone.png", "noextension"];
-        let out = externals_from(&dir, list.into_iter().map(asset).collect());
+        let out = externals_from(&dir, list.into_iter().map(asset).collect(), &HashSet::new());
         let states: Vec<_> = out.iter().map(|e| (base_name(&e.stored), e.state)).collect();
         assert_eq!(states, [("here.jpg", State::Found), ("oak.jpg", State::Nearby), ("gone.png", State::Missing)]);
         assert_eq!(nearby(&dir.join("a.max"), r"Q:\old\oak.jpg"), Some(dir.join("maps").join("Oak.JPG")));
+    }
+
+    #[test]
+    fn a_path_on_an_unknown_computer_is_not_looked_at() {
+        let max = Path::new(r"\\Studio\lib\a.max");
+        let hosts = known_hosts(max, &[PathBuf::from(r"\\NAS\maps"), PathBuf::from(r"B:\Lib")]);
+        for path in [r"\\studio\x\a.jpg", "//NAS/x/a.jpg", r"C:\x\a.jpg", "a.jpg", r"\x\a.jpg"] {
+            assert!(may_look(path, &hosts), "{path}");
+        }
+        for path in [r"\\evil.example\s\a.jpg", "//evil/s/a.jpg", r"\/evil\s\a.jpg", r"\\?\UNC\evil\s\a.jpg", r"\\.\pipe\x", r"\\nas@SSL\s\a.jpg"] {
+            assert!(!may_look(path, &hosts), "{path}");
+        }
     }
 
     #[test]

@@ -398,40 +398,50 @@ impl LibraryIndex {
 
 /// Whether `name` matches a pattern with `*`, `?` and `[...]`, as a whole, case and all.
 pub fn wildcard_match(pattern: &str, name: &str) -> bool {
-    fn go(p: &[char], n: &[char]) -> bool {
-        match p.split_first() {
-            None => n.is_empty(),
-            Some(('*', rest)) => (0..=n.len()).any(|i| go(rest, &n[i..])),
-            Some(('?', rest)) => !n.is_empty() && go(rest, &n[1..]),
-            Some(('[', rest)) => {
-                let Some(close) = rest.iter().skip(1).position(|c| *c == ']').map(|i| i + 1) else {
-                    return n.first() == Some(&'[') && go(rest, &n[1..]);
-                };
-                let (set, after) = (&rest[..close], &rest[close + 1..]);
-                let (negate, set) = match set.split_first() {
-                    Some(('!', s)) => (true, s),
-                    _ => (false, set),
-                };
-                let Some(c) = n.first() else { return false };
+    /// How many letters of the pattern match one letter of the name, if they do.
+    fn one(p: &[char], c: char) -> Option<usize> {
+        match *p.first()? {
+            '?' => Some(1),
+            '[' => {
+                let Some(close) = p.iter().skip(2).position(|c| *c == ']').map(|i| i + 2) else { return (c == '[').then_some(1) };
+                let set = &p[1..close];
+                let (negate, set) = if set.first() == Some(&'!') { (true, &set[1..]) } else { (false, set) };
                 let mut hit = false;
                 let mut i = 0;
                 while i < set.len() {
                     if i + 2 < set.len() && set[i + 1] == '-' {
-                        hit |= set[i] <= *c && *c <= set[i + 2];
+                        hit |= set[i] <= c && c <= set[i + 2];
                         i += 3;
                     } else {
-                        hit |= set[i] == *c;
+                        hit |= set[i] == c;
                         i += 1;
                     }
                 }
-                hit != negate && go(after, &n[1..])
+                (hit != negate).then_some(close + 1)
             }
-            Some((c, rest)) => n.first() == Some(c) && go(rest, &n[1..]),
+            letter => (letter == c).then_some(1),
         }
     }
     let p: Vec<char> = pattern.chars().collect();
     let n: Vec<char> = name.chars().collect();
-    go(&p, &n)
+    let (mut i, mut j) = (0, 0);
+    // only the last star is tried again, so that a pattern of many stars takes no longer
+    let mut star: Option<(usize, usize)> = None;
+    while j < n.len() {
+        if p.get(i) == Some(&'*') {
+            star = Some((i + 1, j));
+            i += 1;
+        } else if let Some(used) = p.get(i..).and_then(|rest| one(rest, n[j])) {
+            i += used;
+            j += 1;
+        } else if let Some((after, from)) = star {
+            star = Some((after, from + 1));
+            (i, j) = (after, from + 1);
+        } else {
+            return false;
+        }
+    }
+    p[i..].iter().all(|c| *c == '*')
 }
 
 /// The folders (as keys) that are not shown: those named like one of `names` (wildcards allowed, such as
@@ -470,6 +480,14 @@ pub fn cache_name(roots: &[PathBuf]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pattern_of_many_stars_ends() {
+        let pattern = "*a".repeat(40) + "b";
+        assert!(!wildcard_match(&pattern, &"a".repeat(200)));
+        assert!(wildcard_match("z-*", "z-maps") && wildcard_match("*[0-9]?", "abc1x") && !wildcard_match("[!a]*", "abc"));
+        assert!(wildcard_match("a*b*c", "axxbyyc") && !wildcard_match("a*b", "axxbyy") && wildcard_match("**", ""));
+    }
 
     fn touch(path: &Path) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();

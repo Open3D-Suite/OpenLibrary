@@ -216,6 +216,8 @@ texts! {
         "Faltan partes de esta descarga; ponlas en la misma carpeta: {parts}";
     CatalogNoTool => "7-Zip (7-zip.org) is needed to open this file. Install it and try again.",
         "Para abrir este archivo hace falta 7-Zip (7-zip.org). Instálalo y vuelve a probar.";
+    CatalogTooLarge => "It takes too much room once extracted (over 60 GB): it was stopped.",
+        "Ocupa demasiado al descomprimirse (más de 60 GB): se ha parado.";
     CatalogIncomplete => "The file is incomplete: a part is missing, or the download was cut short.",
         "El archivo está incompleto: falta alguna parte o la descarga se cortó.";
     CatalogOpenFailed => "It could not be opened: {error}",

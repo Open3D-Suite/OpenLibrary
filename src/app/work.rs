@@ -288,7 +288,7 @@ impl OpenLibraryApp {
     pub(super) fn open_missing(&mut self, asset: &Asset) {
         let files = asset.all_files().into_iter().map(Path::to_path_buf).collect();
         let data = self.data_dir.clone().unwrap_or_else(std::env::temp_dir);
-        self.missing = Some(MissingWindow::new(&asset.name, files, &data, self.lang, self.wake.clone()));
+        self.missing = Some(MissingWindow::new(&asset.name, (files, self.all_roots()), &data, self.lang, self.wake.clone()));
     }
 
     /// The windows over the gallery: the missing files and the question before previews.

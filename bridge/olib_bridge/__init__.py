@@ -32,6 +32,13 @@ def start():
     return port
 
 
+def refresh_state():
+    """Called by the callbacks of 3ds Max (olib_stateChanged)."""
+    from . import server
+
+    server.refresh_state()
+
+
 def stop():
     from . import server
 
