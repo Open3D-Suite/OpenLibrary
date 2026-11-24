@@ -34,15 +34,36 @@ pub fn cache_file(cache_dir: &Path, src: &Path) -> PathBuf {
 }
 
 /// Decodes an image; one that breaks its decoder has no thumbnail, and the threads go on.
-fn decode(src: &Path) -> Option<DynamicImage> {
-    std::panic::catch_unwind(|| decode_file(src)).ok().flatten()
+fn decode(src: &Path, side: u32) -> Option<DynamicImage> {
+    std::panic::catch_unwind(|| decode_file(src, side)).ok().flatten()
 }
 
-fn decode_file(src: &Path) -> Option<DynamicImage> {
+/// A JPEG, decoded at the smallest fraction of its size that is at least `side`; `None` for the rare kinds
+/// (the general decoder takes them).
+fn decode_jpeg(src: &Path, side: u32) -> Option<DynamicImage> {
+    let mut decoder = jpeg_decoder::Decoder::new(std::io::BufReader::new(fs::File::open(src).ok()?));
+    decoder.set_max_decoding_buffer_size(512 << 20);
+    decoder.read_info().ok()?;
+    let side = u16::try_from(side).ok()?;
+    let (w, h) = decoder.scale(side, side).ok()?;
+    let pixels = decoder.decode().ok()?;
+    match decoder.info()?.pixel_format {
+        jpeg_decoder::PixelFormat::RGB24 => image::RgbImage::from_raw(w.into(), h.into(), pixels).map(DynamicImage::ImageRgb8),
+        jpeg_decoder::PixelFormat::L8 => image::GrayImage::from_raw(w.into(), h.into(), pixels).map(DynamicImage::ImageLuma8),
+        _ => None,
+    }
+}
+
+fn decode_file(src: &Path, side: u32) -> Option<DynamicImage> {
     let is_max = src.extension().is_some_and(|e| e.eq_ignore_ascii_case(crate::library::MAX_EXT));
     if is_max {
         let bmp = maxfile::embedded_thumbnail(src)?;
         return image::load_from_memory_with_format(&bmp, ImageFormat::Bmp).ok();
+    }
+    if src.extension().is_some_and(|e| e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg"))
+        && let Some(img) = decode_jpeg(src, side)
+    {
+        return Some(img);
     }
     image::ImageReader::open(src).ok()?.with_guessed_format().ok()?.decode().ok()
 }
@@ -54,7 +75,7 @@ pub fn load(src: &Path, cache_dir: &Path) -> Option<RgbaImage> {
     if let Ok(img) = image::open(&cached) {
         return Some(img.to_rgba8());
     }
-    let img = decode(src)?;
+    let img = decode(src, THUMB_PX)?;
     let img = if img.width().max(img.height()) > THUMB_PX { img.thumbnail(THUMB_PX, THUMB_PX) } else { img };
     let mut rgba = img.to_rgba8();
     if rgba.pixels().any(|p| p.0[3] < 255) {
@@ -71,7 +92,7 @@ pub fn load(src: &Path, cache_dir: &Path) -> Option<RgbaImage> {
 
 /// The image of a source, no larger than `side`; not cached.
 pub fn load_large(src: &Path, side: u32) -> Option<RgbaImage> {
-    let img = decode(src)?;
+    let img = decode(src, side)?;
     Some(if img.width().max(img.height()) > side { img.thumbnail(side, side) } else { img }.to_rgba8())
 }
 
@@ -120,6 +141,22 @@ impl ThumbLoader {
             queue.jobs.push((key.to_string(), src.to_path_buf()));
             wake.notify_one();
         }
+    }
+
+    /// Asks for one that is not on screen yet: after all the others.
+    pub fn prefetch(&mut self, key: &str, src: &Path) {
+        if !self.pending.insert(key.to_string()) {
+            return;
+        }
+        if let Ok(mut queue) = self.queue.0.lock() {
+            queue.jobs.insert(0, (key.to_string(), src.to_path_buf()));
+            self.queue.1.notify_one();
+        }
+    }
+
+    /// How many are asked for and not here yet.
+    pub fn waiting(&self) -> usize {
+        self.pending.len()
     }
 
     /// Forgets what was asked and not yet started (after a change of folder, say).

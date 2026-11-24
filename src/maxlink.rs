@@ -16,7 +16,7 @@ use std::time::Duration;
 
 pub const PORTS: std::ops::RangeInclusive<u16> = 47820..=47829;
 /// The bridge's protocol this app speaks.
-pub const PROTOCOL: u64 = 2;
+pub const PROTOCOL: u64 = 3;
 const TOKEN_FILE: &str = "bridge-token";
 
 /// What went wrong with a request.

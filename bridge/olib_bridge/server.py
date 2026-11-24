@@ -23,7 +23,7 @@ from PySide6 import QtCore
 
 from . import config, ops
 
-PROTOCOL = 2
+PROTOCOL = 3
 PORTS = range(47820, 47830)
 MAX_LINE = 1 << 20  # a request longer than 1 MB is not one of the app's
 
@@ -108,6 +108,8 @@ def _info():
 COMMANDS = {
     "merge": ops.merge,
     "merge_proxy": ops.merge_as_proxy,
+    "check_asset": ops.check_asset,
+    "instance_asset": ops.instance_asset,
     "make_preview": ops.make_preview,
     "relink_scene": ops.relink_scene,
     "relink_file": ops.relink_max_file,

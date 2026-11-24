@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 pub const MAX_EXT: &str = "max";
@@ -106,13 +107,6 @@ impl Asset {
     /// The file for an engine: by its suffix, or else the first unsuffixed file `detect` says is of it.
     pub fn file_for_engine(&self, engine: Engine, detect: impl Fn(&Path) -> Engine) -> Option<&Path> {
         self.versions.get(&engine).map(PathBuf::as_path).or_else(|| self.auto_files.iter().map(PathBuf::as_path).find(|f| detect(f) == engine))
-    }
-
-    /// Whether every word is in its name or in the name of its folder (words in lower case).
-    pub fn matches(&self, words: &[String]) -> bool {
-        let folder = self.folder.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
-        let hay = format!("{} {}", self.name, folder).to_lowercase();
-        words.iter().all(|w| hay.contains(w.as_str()))
     }
 }
 
@@ -236,6 +230,16 @@ pub struct ScanStats {
     pub reused: usize,
 }
 
+/// An asset, and what is asked of it at every search, worked out once.
+pub struct Row {
+    pub asset: Arc<Asset>,
+    pub key: String,
+    /// Its folder, as Windows compares it.
+    pub folder: String,
+    /// Where the words of a search are looked for.
+    hay: String,
+}
+
 /// The index of one tab (several root folders), with its cache on disk.
 ///
 /// The first time every folder is listed. Afterwards the cache loads at once and a scan lists again only
@@ -246,7 +250,7 @@ pub struct LibraryIndex {
     pub roots: Vec<PathBuf>,
     records: HashMap<String, Record>,
     pub folders: Vec<PathBuf>,
-    by_folder: HashMap<String, Vec<Asset>>,
+    rows: Arc<Vec<Row>>,
     pub stats: ScanStats,
 }
 
@@ -274,7 +278,14 @@ impl LibraryIndex {
         let mut folders: Vec<PathBuf> = self.records.values().map(|r| r.path.clone()).collect();
         folders.sort_by_key(|p| norm_key(p));
         self.folders = folders;
-        self.by_folder = self.records.iter().filter(|(_, r)| !r.assets.is_empty()).map(|(k, r)| (k.clone(), r.assets.clone())).collect();
+        let row = |folder: &String, asset: &Asset| {
+            let name = asset.folder.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let low = asset.name.to_lowercase();
+            Row { key: format!("{folder}\\{low}"), folder: folder.clone(), hay: format!("{low} {name}"), asset: Arc::new(asset.clone()) }
+        };
+        let mut rows: Vec<Row> = self.records.iter().flat_map(|(k, r)| r.assets.iter().map(move |a| row(k, a))).collect();
+        rows.sort_by(|a, b| (&a.hay, &a.key).cmp(&(&b.hay, &b.key)));
+        self.rows = Arc::new(rows);
     }
 
     /// Reads the folders again: only those that changed when `incremental`. `cancelled` is asked between
@@ -373,26 +384,35 @@ impl LibraryIndex {
 
     /// Every asset, by name.
     pub fn assets(&self) -> Vec<&Asset> {
-        let mut out: Vec<&Asset> = self.by_folder.values().flatten().collect();
-        out.sort_by_key(|a| a.name.to_lowercase());
-        out
+        self.rows.iter().map(|r| r.asset.as_ref()).collect()
+    }
+
+    /// The same, with what each search needs.
+    pub fn rows(&self) -> &[Row] {
+        &self.rows
+    }
+
+    /// The rows in a folder, and in its subfolders when `recursive` (all of them for `None`), whose name or folder
+    /// holds every word of `text`.
+    pub fn find(&self, text: &str, folder: Option<&Path>, recursive: bool) -> Vec<&Row> {
+        let words: Vec<String> = text.to_lowercase().split_whitespace().map(str::to_string).collect();
+        let key = folder.map(norm_key);
+        let prefix = key.as_ref().map(|k| format!("{}\\", k.trim_end_matches('\\')));
+        let inside = |row: &Row| match (&key, &prefix) {
+            (Some(key), Some(prefix)) => row.folder == *key || (recursive && row.folder.starts_with(prefix)),
+            _ => true,
+        };
+        self.rows.iter().filter(|r| inside(r) && words.iter().all(|w| r.hay.contains(w.as_str()))).collect()
     }
 
     /// The assets in a folder, and in its subfolders when `recursive`; every asset for `None`.
     pub fn assets_in(&self, folder: Option<&Path>, recursive: bool) -> Vec<&Asset> {
-        let Some(folder) = folder else { return self.assets() };
-        let key = norm_key(folder);
-        let prefix = format!("{key}\\");
-        let mut out: Vec<&Asset> =
-            self.by_folder.iter().filter(|(k, _)| **k == key || (recursive && k.starts_with(&prefix))).flat_map(|(_, list)| list).collect();
-        out.sort_by_key(|a| a.name.to_lowercase());
-        out
+        self.search("", folder, recursive)
     }
 
     /// The assets whose name or folder holds every word of `text`.
     pub fn search(&self, text: &str, folder: Option<&Path>, recursive: bool) -> Vec<&Asset> {
-        let words: Vec<String> = text.to_lowercase().split_whitespace().map(str::to_string).collect();
-        self.assets_in(folder, recursive).into_iter().filter(|a| a.matches(&words)).collect()
+        self.find(text, folder, recursive).into_iter().map(|r| r.asset.as_ref()).collect()
     }
 }
 

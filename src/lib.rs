@@ -11,6 +11,7 @@ pub mod favorites;
 pub mod foldericons;
 pub mod foldertree;
 pub mod interiors;
+pub mod kit;
 pub mod library;
 pub mod max_session;
 pub mod maxbatch;

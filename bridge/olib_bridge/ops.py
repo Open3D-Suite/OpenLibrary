@@ -232,8 +232,18 @@ def relink_max_file(max_path, search_dirs):
 # ---------------------------------------------------------------------------------------------------------------
 # Merge
 # ---------------------------------------------------------------------------------------------------------------
-def merge(max_path, asset_name, imp, place=True, relink_dirs=None):
+def _asset_id(value):
+    """The mark of a model in the scene: letters and digits the app makes, or nothing."""
+    if not value:
+        return ""
+    if not isinstance(value, str) or len(value) > 40 or not value.isalnum():
+        raise RuntimeError("The mark of the model is not valid.")
+    return value
+
+
+def merge(max_path, asset_name, imp, place=True, relink_dirs=None, asset_id=""):
     max_path = _max_file(max_path)
+    asset_id = _asset_id(asset_id)
     imp = _import_settings(imp)
     focus_max()
     with _undo("OpenLibrary: Merge " + str(asset_name)):
@@ -247,6 +257,8 @@ def merge(max_path, asset_name, imp, place=True, relink_dirs=None):
             bool(imp.get("import_lights", False)),
             bool(imp.get("import_cameras", False)),
         )
+        if asset_id and len(nodes):
+            rt.olib_tag(nodes, asset_id, "model")
         if relink_dirs and len(nodes):
             relink_scene(relink_dirs)
         if place and len(nodes):
@@ -255,10 +267,11 @@ def merge(max_path, asset_name, imp, place=True, relink_dirs=None):
     return len(nodes)
 
 
-def merge_as_proxy(max_path, asset_name, engine, imp, proxy_dir, place=True, relink_dirs=None):
+def merge_as_proxy(max_path, asset_name, engine, imp, proxy_dir, place=True, relink_dirs=None, asset_id=""):
     if engine not in ENGINES:
         raise RuntimeError("Merge as proxy needs Corona or V-Ray as the renderer of the scene.")
     max_path = _max_file(max_path)
+    asset_id = _asset_id(asset_id)
     imp = _import_settings(imp)
     if not isinstance(proxy_dir, str) or not os.path.isabs(proxy_dir):
         raise RuntimeError("The folder for the proxy is not valid.")
@@ -274,9 +287,35 @@ def merge_as_proxy(max_path, asset_name, engine, imp, proxy_dir, place=True, rel
             str(imp.get("material_dups", "scene")),
             str(imp.get("proxy_display", "preview")),
         )
+        if asset_id and len(nodes):
+            rt.olib_tag(nodes, asset_id, "proxy")
         if relink_dirs and len(nodes):
             relink_scene(relink_dirs)
         if place and len(nodes):
+            nodes = rt.olib_place(nodes, bool(imp.get("place_on_surface", True)), bool(imp.get("place_multiple", True)))
+    rt.redrawViews()
+    return len(nodes)
+
+
+def check_asset(asset_id, asset_name):
+    """How many objects of a model are in the scene, as a proxy and as geometry."""
+    asset_id = _asset_id(asset_id)
+    return {kind: len(rt.olib_findAsset(asset_id, str(asset_name), kind)) for kind in ("proxy", "model")}
+
+
+def instance_asset(asset_id, asset_name, kind, imp):
+    """Another instance of a model that is in the scene, placed with the mouse."""
+    asset_id = _asset_id(asset_id)
+    imp = _import_settings(imp)
+    if kind not in ("proxy", "model"):
+        raise RuntimeError("The kind is not valid.")
+    focus_max()
+    with _undo("OpenLibrary: Instance " + str(asset_name)):
+        found = rt.olib_findAsset(asset_id, str(asset_name), kind)
+        if not len(found):
+            raise RuntimeError("It is not in the scene any more.")
+        nodes = rt.olib_instanceOf(found, asset_id, kind)
+        if len(nodes):
             nodes = rt.olib_place(nodes, bool(imp.get("place_on_surface", True)), bool(imp.get("place_multiple", True)))
     rt.redrawViews()
     return len(nodes)

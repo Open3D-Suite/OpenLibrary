@@ -2,12 +2,15 @@
 //! The external files a `.max` does not find, and changing or removing their paths inside it. The `.max` is not
 //! opened: a 3ds Max in the background writes again its table of external files (`olib_batchPaths`).
 
-use crate::library::IMAGE_EXTS;
+use crate::library::{IMAGE_EXTS, norm_key};
 use crate::maxbatch::Job;
 use crate::maxfile;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
@@ -113,6 +116,110 @@ fn externals_from(base: &Path, assets: Vec<maxfile::Asset>, hosts: &HashSet<Stri
         out.push(External { kind: asset.kind, stored: asset.stored, state });
     }
     out
+}
+
+/// What is wrong with the external files of a `.max`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Check {
+    pub total: usize,
+    /// The names of those not found.
+    pub missing: Vec<String>,
+    /// Those that are in the model's folder, and are found by themselves on import.
+    pub nearby: usize,
+}
+
+impl Check {
+    pub fn warns(&self) -> bool {
+        self.nearby > 0 || !self.missing.is_empty()
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct CheckRecord {
+    date: u64,
+    size: u64,
+    /// When it was looked at, in seconds.
+    at: u64,
+    check: Check,
+}
+
+/// The external files of each `.max` as they were last looked at, kept in `external_files.json`.
+pub struct CheckCache {
+    path: PathBuf,
+    data: Mutex<HashMap<String, CheckRecord>>,
+    dirty: AtomicBool,
+}
+
+/// How long a look is good for: the files it names may come and go without the `.max` changing.
+const CHECK_AGE: u64 = 12 * 3600;
+
+fn stamp(file: &Path) -> Option<(u64, u64)> {
+    let meta = std::fs::metadata(file).ok()?;
+    Some((meta.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_secs(), meta.len()))
+}
+
+fn now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+impl CheckCache {
+    pub fn load(path: &Path) -> Self {
+        let data = std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        Self { path: path.to_path_buf(), data: Mutex::new(data), dirty: AtomicBool::new(false) }
+    }
+
+    /// The last look, without asking the disk.
+    pub fn peek(&self, file: &Path) -> Option<Check> {
+        self.data.lock().ok()?.get(&norm_key(file)).map(|r| r.check.clone())
+    }
+
+    /// Whether the last look has something to tell.
+    pub fn warns(&self, file: &Path) -> bool {
+        self.data.lock().is_ok_and(|d| d.get(&norm_key(file)).is_some_and(|r| r.check.warns()))
+    }
+
+    /// Looks at a file, unless the last look is recent and the file is the same. Not for the window's thread.
+    pub fn check(&self, file: &Path, roots: &[PathBuf]) {
+        let Some((date, size)) = stamp(file) else { return };
+        let key = norm_key(file);
+        let good = |r: &CheckRecord| r.date == date && r.size == size && now().saturating_sub(r.at) < CHECK_AGE;
+        if self.data.lock().is_ok_and(|d| d.get(&key).is_some_and(good)) {
+            return;
+        }
+        let list = externals(file, roots);
+        let mut missing: Vec<String> = list.iter().filter(|e| e.state == State::Missing).map(|e| base_name(&e.stored).to_string()).collect();
+        missing.sort_by_key(|n| n.to_lowercase());
+        missing.dedup_by_key(|n| n.to_lowercase());
+        let nearby = list.iter().filter(|e| e.state == State::Nearby).count();
+        let record = CheckRecord { date, size, at: now(), check: Check { total: list.len(), missing, nearby } };
+        if let Ok(mut data) = self.data.lock() {
+            data.insert(key, record);
+            self.dirty.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Forgets a file, to look at it again.
+    pub fn forget(&self, file: &Path) {
+        if let Ok(mut data) = self.data.lock() {
+            data.remove(&norm_key(file));
+        }
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        if !self.dirty.swap(false, Ordering::Relaxed) {
+            return Ok(());
+        }
+        let bytes = {
+            let data = self.data.lock().map_err(|_| std::io::Error::other("checks lock"))?;
+            serde_json::to_vec(&*data).map_err(std::io::Error::other)?
+        };
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = self.path.with_extension("tmp");
+        std::fs::write(&tmp, bytes)?;
+        std::fs::rename(&tmp, &self.path)
+    }
 }
 
 /// What is almost never needed and can go at once when it does not turn up: Corona LUTs (.cube), environment
@@ -228,6 +335,23 @@ mod tests {
         for path in [r"\\evil.example\s\a.jpg", "//evil/s/a.jpg", r"\/evil\s\a.jpg", r"\\?\UNC\evil\s\a.jpg", r"\\.\pipe\x", r"\\nas@SSL\s\a.jpg"] {
             assert!(!may_look(path, &hosts), "{path}");
         }
+    }
+
+    #[test]
+    fn a_look_is_kept_until_the_file_changes() {
+        let dir = folder("check");
+        let (max, cache) = (dir.join("a.max"), dir.join("external_files.json"));
+        std::fs::write(&max, b"not a max").unwrap();
+        let checks = CheckCache::load(&cache);
+        assert_eq!(checks.peek(&max), None);
+        checks.check(&max, &[]);
+        assert_eq!(checks.peek(&max), Some(Check::default()));
+        assert!(!checks.warns(&max));
+        checks.save().unwrap();
+        let again = CheckCache::load(&cache);
+        assert_eq!(again.peek(&max), Some(Check::default()));
+        again.forget(&max);
+        assert_eq!(again.peek(&max), None);
     }
 
     #[test]

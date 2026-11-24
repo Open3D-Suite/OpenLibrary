@@ -122,6 +122,10 @@ class MaterialArgumentTests(unittest.TestCase):
         for bad in ([0], [-1, 2], [float("inf")]):
             with self.assertRaises(RuntimeError):
                 ops._xyz(bad)
+        for bad in ("a b", 'x"', 7, "a" * 50):
+            with self.assertRaises(RuntimeError):
+                ops._asset_id(bad)
+        self.assertEqual(ops._asset_id("a0f3"), "a0f3")
         with self.assertRaises(RuntimeError):
             ops._route("anywhere")
         self.assertEqual(ops._route("slate"), "slate")
