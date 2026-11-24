@@ -181,8 +181,6 @@ texts! {
         "Hace falta V-Ray instalado para convertir sus materiales.";
     ReasonStuck => "The 3ds Max in the background closed, or got stuck, on it.",
         "El 3ds Max en segundo plano se cerró o se quedó atascado con él.";
-    Catalog => "Catalogue…",
-        "Catalogar…";
     CatalogHint => "Choose a download, or drag it to this window.",
         "Elige una descarga o arrástrala a esta ventana.";
     CatalogOpenArchive => "Open archive…",
@@ -494,8 +492,6 @@ texts! {
         "Pestañas de la ventana";
     SetNewTab => "New tab",
         "Nueva pestaña";
-    SetAddTab => "Add",
-        "Añadir";
     SetRemoveTab => "Remove",
         "Quitar";
     SetNothingDeleted => "Removing a tab or a folder deletes nothing from the disk.",
@@ -506,16 +502,8 @@ texts! {
         "Contenido";
     SetOpens => "When it opens, show",
         "Al abrir, mostrar";
-    SetRowFavorites => "Show Favourites above the tree",
-        "Enseñar «Favoritos» sobre el árbol";
-    SetRowAll => "Show All above the tree",
-        "Enseñar «Todo» sobre el árbol";
-    SetFolders => "Folders",
-        "Carpetas";
     SetAddFolder => "Add folder…",
         "Añadir carpeta…";
-    SetRemoveFolder => "Remove from the list",
-        "Quitar de la lista";
     KindModels => "3D models",
         "Modelos 3D";
     KindMaterials => "Materials",
@@ -828,8 +816,8 @@ texts! {
         "Mostrar todas";
     FolderOpenInside => "Open everything inside",
         "Desplegar todo lo de dentro";
-    ImpMissingEngine => "Without a version of the scene's renderer",
-        "Sin versión del motor de la escena";
+    ImpMissingEngine => "Lacking the renderer's version",
+        "Si falta la del motor";
     MissingAsk => "Ask which one comes in",
         "Preguntar cuál usar";
     MissingFallback => "Use the one there is",
@@ -884,6 +872,54 @@ texts! {
         "Arrastra aquí los archivos";
     CatalogOpenFile => "Open it, or see it in its folder",
         "Abrirlo, o verlo en su carpeta";
+    ChannelColor => "Base colour",
+        "Color base / difuso";
+    ChannelRough => "Roughness",
+        "Roughness";
+    ChannelGloss => "Glossiness",
+        "Glossiness";
+    ChannelRefl => "Reflection",
+        "Reflexión";
+    ChannelMetal => "Metalness",
+        "Metalness";
+    ChannelNormal => "Normal",
+        "Normal";
+    ChannelBump => "Bump",
+        "Bump";
+    ChannelDisp => "Displacement",
+        "Desplazamiento";
+    ChannelAo => "Ambient occlusion",
+        "Oclusión ambiental";
+    ChannelOpacity => "Opacity",
+        "Opacidad";
+    ChannelEmission => "Emission",
+        "Emisión";
+    ChannelTransl => "Translucency",
+        "Translucidez";
+    SetChangeFolder => "Change…",
+        "Cambiar…";
+    SetRemoveThisTab => "Remove this tab",
+        "Quitar esta pestaña";
+    SetMoveUp => "Move up",
+        "Subir";
+    SetMoveDown => "Move down",
+        "Bajar";
+    SetFoldersOf => "Folders of «{name}»",
+        "Carpetas de «{name}»";
+    SetRowsHint => "The ticked rows are shown above the folder tree.",
+        "Las filas marcadas se ven arriba del árbol de carpetas.";
+    SetNoTabs => "Make a tab to add folders to it.",
+        "Crea una pestaña para añadirle carpetas.";
+    SetLostFolder => "The folders in this colour cannot be reached now.",
+        "Las carpetas de este color no se encuentran ahora mismo.";
+    PrevImage => "Image",
+        "Imagen";
+    PrevCamera => "Camera",
+        "Cámara";
+    PrevNote => "The framing comes from the box of the object, so it works for a chair and for a building. «From my view» uses the active view as it is.",
+        "El encuadre se calcula con la caja del objeto, así sirve igual para una silla que para un edificio. «Desde mi vista» usa la vista activa tal cual.";
+    BridgeRestart => "After installing it, restart 3ds Max.",
+        "Después de instalarlo, reinicia 3ds Max.";
     SettingsError => "The settings could not be saved: {error}", "No se pudieron guardar los ajustes: {error}";
 }
 

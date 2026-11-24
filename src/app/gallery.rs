@@ -17,25 +17,6 @@ use std::sync::Arc;
 /// Below a card, when names are shown.
 const FOOTER: f32 = 44.0;
 
-pub(super) fn engine_color(engine: Option<Engine>) -> Color32 {
-    match engine {
-        Some(Engine::Corona) => Color32::from_rgb(0xE8, 0x73, 0x1A),
-        Some(Engine::VRay) => Color32::from_rgb(0x2D, 0x7F, 0xD3),
-        Some(Engine::FStorm) => Color32::from_rgb(0x8A, 0x8A, 0x8A),
-        _ => Color32::from_rgb(0x7A, 0x7A, 0x7A),
-    }
-}
-
-fn engine_letters(engine: Option<Engine>) -> &'static str {
-    match engine {
-        Some(Engine::Corona) => "CO",
-        Some(Engine::VRay) => "VR",
-        Some(Engine::FStorm) => "FS",
-        Some(Engine::Other) => "?",
-        None => "…",
-    }
-}
-
 pub(super) fn known(engine: Engine) -> bool {
     engine != Engine::Other
 }
@@ -457,13 +438,9 @@ impl OpenLibraryApp {
         self.paint_engines(ui, &item.asset, image);
         let warns = item.asset.all_files().iter().any(|f| self.checks.warns(f));
         if warns {
-            let size = (grid.side / 8.0).clamp(16.0, 24.0);
+            let size = crate::badges::size(grid.side) * 0.82;
             let square = Rect::from_min_size(egui::pos2(image.right() - size - 6.0, image.top() + 6.0), Vec2::splat(size));
-            let dark = Color32::from_rgb(0x22, 0x22, 0x22);
-            let triangle = vec![square.center_top(), square.right_bottom(), square.left_bottom()];
-            ui.painter().add(egui::Shape::convex_polygon(triangle, kit::pal(ui).warn, Stroke::new(1.0, dark)));
-            let at = square.center() + Vec2::new(0.0, size * 0.14);
-            ui.painter().text(at, egui::Align2::CENTER_CENTER, "!", kit::mono_bold(size * 0.62), dark);
+            crate::badges::warning(ui.painter(), square);
         }
         if grid.cards {
             self.paint_footer(ui, &item, rect, selected);
@@ -568,22 +545,12 @@ impl OpenLibraryApp {
 
     /// The renderers, at the top left; the version that is not of the scene's renderer, faded.
     fn paint_engines(&self, ui: &egui::Ui, asset: &Asset, image: Rect) {
-        let size = (image.width() / 7.0).clamp(20.0, 28.0);
+        let size = crate::badges::size(image.width());
         let scene = self.scene_engine();
         let mut x = image.left() + 7.0;
         for engine in self.engines_of(asset) {
-            let badge = Rect::from_min_size(egui::pos2(x, image.top() + 7.0), Vec2::splat(size));
             let other = known(scene) && engine.is_some_and(|e| known(e) && e != scene);
-            let fade = if other { 0.4 } else { 1.0 };
-            let painter = ui.painter();
-            painter.rect_filled(badge, 0.0, engine_color(engine).gamma_multiply(fade));
-            painter.text(
-                badge.center(),
-                egui::Align2::CENTER_CENTER,
-                engine_letters(engine),
-                kit::mono_bold(size * 0.48),
-                Color32::WHITE.gamma_multiply(fade),
-            );
+            crate::badges::engine(ui.painter(), Rect::from_min_size(egui::pos2(x, image.top() + 7.0), Vec2::splat(size)), engine, other);
             x += size + 4.0;
         }
     }

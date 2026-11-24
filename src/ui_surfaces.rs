@@ -2,6 +2,7 @@
 //! The tabs of materials, textures and interiors: folders, cards, the options they are sent with and what is
 //! known of the selected one. Cards are dragged onto 3ds Max.
 
+use crate::badges;
 use crate::favorites::{self, TabView};
 use crate::foldertree::TreeAction;
 use crate::foldertree::{self, SideTree};
@@ -23,7 +24,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-const DARK: Color32 = Color32::from_rgb(20, 24, 34);
 const FOOTER: f32 = 44.0;
 /// How many thumbnails become textures in one frame.
 const TEXTURES_PER_FRAME: usize = 16;
@@ -930,14 +930,10 @@ impl SurfacePanel {
         ui.add_space(6.0);
         kit::caption(ui, self.t(Text::MapsToLoad));
         for (channel, file) in material.pick(prefs::resolution(settings)) {
-            let (letters, [r, g, b]) = channel.badge();
             ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(format!(" {letters} "))
-                        .font(kit::mono(10.5))
-                        .color(Color32::WHITE)
-                        .background_color(Color32::from_rgb(r, g, b)),
-                );
+                let (rect, _) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover());
+                badges::channel(ui.painter(), rect, channel);
+                ui.label(egui::RichText::new(channel_text(channel).get(self.lang)).font(kit::strong(13.0)));
                 if channel == Channel::Ao {
                     ui.weak(self.t(Text::NotWired));
                 }
@@ -1165,7 +1161,7 @@ impl SurfacePanel {
             Some(Some(texture)) => {
                 let balls = prefs::option(settings, "balls").and_then(Value::as_bool).unwrap_or(true);
                 match item {
-                    Surface::Material(m) if m.preview.is_none() && balls => ball(painter, area, texture),
+                    Surface::Material(m) if m.preview.is_none() && balls => badges::ball(painter, area, texture),
                     Surface::Texture(_) => crate::app::picture(painter, area, texture),
                     _ => cover(painter, area, texture),
                 }
@@ -1192,53 +1188,63 @@ impl SurfacePanel {
     }
 
     fn badges(&self, painter: &egui::Painter, area: Rect, item: &Surface, settings: &Settings) {
-        let mut tags: Vec<(String, Color32)> = Vec::new();
+        let size = badges::size(area.width());
+        let top = area.top() + 7.0;
+        let mut x = area.left() + 7.0;
         let top_res = match item {
             Surface::Material(m) => m.top_res(),
             Surface::Room(r) => r.top_res(),
             Surface::Texture(_) => 0,
         };
         if top_res > 0 {
-            tags.push((format!("{top_res}K"), DARK));
+            x = badges::resolution(painter, egui::pos2(x, top), size, top_res) + 4.0;
         }
-        match item {
-            Surface::Room(r) => tags.push((r.size.code().to_string(), Color32::from_rgb(0xA8, 0x6E, 0x14))),
-            Surface::Material(m) if m.is_library() => tags.push((".MAT".to_string(), DARK)),
-            _ => {}
-        }
-        let mut x = area.left() + 4.0;
-        for (text, color) in tags {
-            x = tag(painter, egui::pos2(x, area.top() + 4.0), &text, color) + 3.0;
-        }
-        let bottom = area.bottom() - 20.0;
-        let mut x = area.left() + 4.0;
+        let bottom = area.bottom() - size - 6.0;
         match item {
             Surface::Material(m) if !m.is_library() => {
                 if let Some((aspect, ratio)) = self.shape(settings, m) {
-                    let text = ratio_text(aspect, ratio);
-                    let color = if aspect == Aspect::Square { DARK } else { Color32::from_rgb(0xA8, 0x6E, 0x14) };
-                    let width = text.chars().count() as f32 * 6.0 + 8.0;
-                    tag(painter, egui::pos2(area.right() - width - 4.0, area.top() + 4.0), &text, color);
+                    badges::shape(painter, egui::pos2(area.right() - 7.0, top), size, aspect, &ratio_text(aspect, ratio));
                 }
+                let mut x = area.left() + 7.0;
                 for channel in m.channels().into_iter().filter(|c| *c != Channel::Refl) {
-                    if x + 20.0 > area.right() {
+                    if x + size > area.right() - 4.0 {
                         break;
                     }
-                    let (letters, [r, g, b]) = channel.badge();
-                    x = tag(painter, egui::pos2(x, bottom), letters, Color32::from_rgb(r, g, b)) + 2.0;
+                    badges::channel(painter, Rect::from_min_size(egui::pos2(x, bottom), Vec2::splat(size)), channel);
+                    x += size + 3.0;
                 }
             }
             Surface::Room(r) => {
+                let p = kit::palette(true);
+                badges::pill(painter, egui::pos2(x, top), size, r.size.code(), (p.accent, p.accent_text));
+                let mut x = area.left() + 7.0;
                 for light in r.exrs.keys() {
-                    let (text, color) = match light {
-                        Light::Day => (Text::LightDay, Color32::from_rgb(0xA8, 0x80, 0x10)),
-                        Light::Night => (Text::LightNight, Color32::from_rgb(0x3B, 0x5B, 0xA8)),
+                    let (text, back, ink) = match light {
+                        Light::Day => (Text::LightDay, Color32::from_rgb(0xE0, 0xB5, 0x3A), Color32::from_gray(30)),
+                        Light::Night => (Text::LightNight, Color32::from_rgb(0x3B, 0x5B, 0xA8), Color32::WHITE),
                     };
-                    x = tag(painter, egui::pos2(x, bottom), self.t(text), color) + 3.0;
+                    x = badges::pill(painter, egui::pos2(x, bottom), size, self.t(text), (back, ink)) + 4.0;
                 }
             }
             _ => {}
         }
+    }
+}
+
+fn channel_text(channel: Channel) -> Text {
+    match channel {
+        Channel::Color => Text::ChannelColor,
+        Channel::Rough => Text::ChannelRough,
+        Channel::Gloss => Text::ChannelGloss,
+        Channel::Refl => Text::ChannelRefl,
+        Channel::Metal => Text::ChannelMetal,
+        Channel::Normal => Text::ChannelNormal,
+        Channel::Bump => Text::ChannelBump,
+        Channel::Disp => Text::ChannelDisp,
+        Channel::Ao => Text::ChannelAo,
+        Channel::Opacity => Text::ChannelOpacity,
+        Channel::Emission => Text::ChannelEmission,
+        Channel::Transl => Text::ChannelTransl,
     }
 }
 
@@ -1290,49 +1296,6 @@ fn cover(painter: &egui::Painter, area: Rect, texture: &TextureHandle) {
     let seen = part / part.max_elem();
     let uv = Rect::from_center_size(egui::pos2(0.5, 0.5), seen);
     painter.image(texture.id(), area, uv, Color32::WHITE);
-}
-
-/// A material ball: the texture in a circle, with light from the upper left. Not a render.
-fn ball(painter: &egui::Painter, area: Rect, texture: &TextureHandle) {
-    const RINGS: u32 = 12;
-    const SIDES: u32 = 40;
-    let radius = area.width().min(area.height()) * 0.42;
-    let size = texture.size_vec2();
-    let crop = size.min_elem() / 2.0;
-    let mut mesh = egui::Mesh::with_texture(texture.id());
-    for ring in 0..=RINGS {
-        let r = ring as f32 / RINGS as f32;
-        for side in 0..=SIDES {
-            let angle = side as f32 / SIDES as f32 * std::f32::consts::TAU;
-            let (x, y) = (angle.cos() * r, angle.sin() * r);
-            let z = (1.0 - r * r).max(0.0).sqrt();
-            let lit = 0.2 + 0.95 * (-0.42 * x - 0.5 * y + 0.75 * z).max(0.0);
-            let grey = (lit.min(1.0) * 255.0) as u8;
-            mesh.vertices.push(egui::epaint::Vertex {
-                pos: area.center() + Vec2::new(x, y) * radius,
-                uv: egui::pos2(0.5 + x * crop / size.x, 0.5 + y * crop / size.y),
-                color: Color32::from_gray(grey),
-            });
-        }
-    }
-    for ring in 0..RINGS {
-        for side in 0..SIDES {
-            let a = ring * (SIDES + 1) + side;
-            let b = a + SIDES + 1;
-            mesh.add_triangle(a, b, a + 1);
-            mesh.add_triangle(a + 1, b, b + 1);
-        }
-    }
-    painter.add(egui::Shape::mesh(mesh));
-}
-
-/// Draws a small label; where it ends.
-fn tag(painter: &egui::Painter, at: egui::Pos2, text: &str, color: Color32) -> f32 {
-    let galley = painter.layout_no_wrap(text.to_string(), egui::FontId::monospace(10.0), Color32::WHITE);
-    let rect = Rect::from_min_size(at, Vec2::new(galley.size().x + 8.0, 16.0));
-    painter.rect_filled(rect, 0.0, color);
-    painter.galley(egui::pos2(rect.left() + 4.0, rect.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
-    rect.right()
 }
 
 /// What 3ds Max did, in words.

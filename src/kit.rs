@@ -190,7 +190,7 @@ pub fn set_theme(ctx: &egui::Context, theme: Option<&str>) {
 // ----------------------------------------------------------------------------------------------------
 
 /// The icons of the buttons: SVG paths in a box of 24.
-const ICONS: [(&str, &str); 20] = [
+const ICONS: [(&str, &str); 23] = [
     ("sun", "M8 12A4 4 0 1 1 16 12A4 4 0 1 1 8 12M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"),
     ("moon", "M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"),
     ("refresh", "M20 11a8 8 0 0 0-14.6-4.5L4 8M4 3.5V8h4.5M4 13a8 8 0 0 0 14.6 4.5L20 16M20 20.5V16h-4.5"),
@@ -211,6 +211,9 @@ const ICONS: [(&str, &str); 20] = [
     ("check", "M5 12.5l4.5 4.5L19 7.5"),
     ("close", "M6 6l12 12M18 6L6 18"),
     ("plus", "M12 5v14M5 12h14"),
+    ("minus", "M5 12h14"),
+    ("up", "M6 14l6-6 6 6"),
+    ("dropdown", "M6 10l6 6 6-6"),
     ("down", "M7 10l5 5 5-5"),
     ("right", "M10 7l5 5-5 5"),
     ("warning", "M12 4L21 20H3zM12 10v5M12 17.2v.4"),
@@ -315,6 +318,35 @@ pub fn chip(ui: &mut Ui, text: &str, on: bool) -> Response {
     let label = text.to_string();
     response.widget_info(move || egui::WidgetInfo::selected(egui::Role::CheckBox, true, on, label.clone()));
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// A part of a form, with its title and a frame around it.
+pub fn group<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let p = pal(ui);
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new(title).font(strong(14.0)).color(p.text));
+    let frame = egui::Frame::new().fill(p.sidebar).stroke(Stroke::new(1.0, p.border)).inner_margin(egui::Margin::same(12));
+    let out = frame
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            add(ui)
+        })
+        .inner;
+    ui.add_space(8.0);
+    out
+}
+
+/// A row of a form: what it is, and its control where those of the others are.
+pub fn field<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    const LABELS: f32 = 190.0;
+    ui.horizontal(|ui| {
+        ui.set_height(28.0);
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(LABELS, 28.0), Sense::hover());
+        let font = FontId::proportional(13.5);
+        elided(ui.painter(), rect.left_center(), egui::Align2::LEFT_CENTER, label, font, pal(ui).muted, LABELS);
+        add(ui)
+    })
+    .inner
 }
 
 /// Draws in a part of the window, and nowhere else.

@@ -67,7 +67,7 @@ impl Channel {
             Self::Disp => ("DS", [0xC2, 0x21, 0x8B]),
             Self::Ao => ("AO", [0x1E, 0x9B, 0xD7]),
             Self::Opacity => ("Op", [0xD9, 0x79, 0x2B]),
-            Self::Emission => ("Em", [0xB8, 0xA2, 0x20]),
+            Self::Emission => ("Em", [0xD8, 0xC0, 0x2E]),
             Self::Transl => ("Tr", [0x3F, 0xA7, 0xA0]),
         }
     }

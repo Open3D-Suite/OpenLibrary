@@ -5,6 +5,7 @@
 
 pub mod app;
 pub mod archives;
+pub mod badges;
 pub mod bridge_install;
 pub mod catalog;
 pub mod favorites;

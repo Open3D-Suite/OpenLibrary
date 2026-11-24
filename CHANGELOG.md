@@ -18,6 +18,10 @@ What changed for users in each version of OpenLibrary, newest first.
   they were. A button of the status bar shows and hides the panel of information.
 - **The panel of a model.** Its preview large, opening its `.max` in a 3ds Max, its versions with their size, date and
   data, the external files it does not find by name, and whether its proxy is made.
+- **Clear at a glance.** The cards show the logo of each renderer, a yellow triangle when files are not found, the maps of
+  a material in coloured circles, and whether its texture is square or not. The window has the icon of the app.
+- **Settings in order.** Each page in its groups; the tabs of the window with their folders beside them, and the folders
+  that cannot be reached now in another colour.
 - **Quick.** The window never waits for the server: what it shows of each card is read beforehand, and the tabs stay
   as you left them.
 - **Drag models into 3ds Max.** Drop one or several cards on a 3ds Max window and choose in the menu that opens there:

@@ -3,7 +3,7 @@
 //! and its proxy. The button of the status bar shows and hides it.
 
 use super::frame::engine_name;
-use super::gallery::{engine_color, file_name, picture};
+use super::gallery::{file_name, picture};
 use super::{Detail, Job, OpenLibraryApp, Shown};
 use crate::kit::{self, Kind};
 use crate::library::Asset;
@@ -215,8 +215,8 @@ impl OpenLibraryApp {
         for file in &files {
             let engine = item.asset.versions.iter().find(|(_, f)| *f == file).map(|(e, _)| *e).or_else(|| self.engines.peek(file));
             ui.horizontal_wrapped(|ui| {
-                let (rect, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
-                ui.painter().circle_filled(rect.center(), 5.0, engine_color(engine));
+                let (rect, _) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover());
+                crate::badges::engine(ui.painter(), rect, engine, false);
                 ui.label(engine.map_or(self.t(Text::EnginePending), |e| engine_name(e, self.t(Text::EngineOther))));
                 if engine == Some(scene) && scene != Engine::Other {
                     ui.colored_label(p.ok, self.t(Text::SceneEngine));
@@ -298,7 +298,11 @@ impl OpenLibraryApp {
             return;
         }
         let lost: usize = checks.iter().map(|c| c.missing.len()).sum::<usize>() + nearby;
-        ui.colored_label(p.warn, fill(self.t(Text::FilesMissing), &[("missing", &lost), ("count", &total)]));
+        ui.horizontal(|ui| {
+            let (rect, _) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover());
+            crate::badges::warning(ui.painter(), rect.shrink(1.0));
+            ui.colored_label(p.warn, fill(self.t(Text::FilesMissing), &[("missing", &lost), ("count", &total)]));
+        });
         if nearby > 0 {
             ui.small(fill(self.t(Text::FilesNearby), &[("count", &nearby)]));
         }

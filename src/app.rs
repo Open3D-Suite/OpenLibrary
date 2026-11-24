@@ -843,9 +843,10 @@ impl eframe::App for OpenLibraryApp {
 
 /// Opens the window.
 pub fn run() -> eframe::Result {
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_title(crate::APP).with_inner_size([1360.0, 860.0]).with_min_inner_size([760.0, 480.0]),
-        ..Default::default()
-    };
+    let mut viewport = egui::ViewportBuilder::default().with_title(crate::APP).with_inner_size([1360.0, 860.0]).with_min_inner_size([760.0, 480.0]);
+    if let Ok(icon) = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-256.png")) {
+        viewport = viewport.with_icon(icon);
+    }
+    let options = eframe::NativeOptions { viewport, ..Default::default() };
     eframe::run_native(crate::APP, options, Box::new(|cc| Ok(Box::new(OpenLibraryApp::new(cc)))))
 }

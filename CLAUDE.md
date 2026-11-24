@@ -45,6 +45,7 @@ Update it in the same commit as a change that makes it old.
 - `src/app/frame.rs` (header, status bar), `src/app/gallery.rs` (title, filters, cards, their menu),
   `src/app/inspector.rs` (the panel of the selected model), `src/app/merge.rs` (the menu after a drop, the questions,
   models one after another).
+- `src/badges.rs`: what is drawn over the images: renderers, warning, maps, shape, the material ball.
 - `src/kit.rs`: the look (colours of both modes, fonts of Windows, icons) and the widgets: `button`, `chip`, `tab`...
 - `src/app/work.rs`: the window's batches (previews, model data) and what opens the two windows below.
 - `src/app/live.rs`: what is asked of an open 3ds Max: the preview of its selection, lost paths of the scene or of
@@ -107,7 +108,8 @@ Update it in the same commit as a change that makes it old.
 - `src/open3d_settings.rs`: what every Open3D app shares, the language and the folders of each app, with
   the cases its tests read (`src/open3d_settings_cases.txt`).
 - `docs/security.md`: what the app reads and writes and what it checks; a change to any of it updates that page.
-  `assets/icon-256.png` is the icon for the launcher's catalog.
+  `assets/icon-256.png` is the icon of the window and for the launcher's catalog. `assets/engine_*.png` are the logos of
+  the renderers, trademarks of their owners (README, *License*).
 - `build.rs`: the exe's icon (`assets/icon.ico`) and file properties.
 
 ## Build and check

@@ -78,3 +78,6 @@ Copyright (C) 2026 daniellopezcastellanos and OpenLibrary contributors.
 OpenLibrary is free software under the GNU General Public License, version 3 or later
 (`GPL-3.0-or-later`). See [`LICENSE`](LICENSE). The libraries it contains and their licences are
 listed in `THIRD-PARTY-LICENSES.txt` inside the release zip.
+
+The logos of Corona, V-Ray and FStorm (`assets/engine_*.png`) are trademarks of their owners. They are not under that
+licence, and are used only to say which renderer a model is made for. OpenLibrary is not made or endorsed by them.
