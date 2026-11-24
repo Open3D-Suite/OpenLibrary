@@ -46,6 +46,12 @@ pub(super) struct Work {
     failed: usize,
 }
 
+/// Where the preview of a model goes: in the place of the one there is, if 3ds Max can write it, or beside it.
+pub(super) fn preview_out(asset: &Asset) -> PathBuf {
+    let writable = |p: &&PathBuf| p.extension().is_some_and(|e| ["jpg", "jpeg", "png"].iter().any(|x| e.eq_ignore_ascii_case(x)));
+    asset.preview.as_ref().filter(writable).cloned().unwrap_or_else(|| asset.folder.join(format!("{}.jpg", asset.name)))
+}
+
 /// The previews to make of these models: the file by engine (Corona first), and where it goes: in the place of
 /// the one there is, if 3ds Max can write it, or beside the model.
 fn preview_jobs(assets: &[Asset]) -> Vec<PreviewJob> {
@@ -56,10 +62,9 @@ fn preview_jobs(assets: &[Asset]) -> Vec<PreviewJob> {
                 .iter()
                 .find_map(|e| asset.versions.get(e).map(PathBuf::as_path))
                 .or_else(|| asset.any_file())?;
-            let writable = |p: &&PathBuf| p.extension().is_some_and(|e| ["jpg", "jpeg", "png"].iter().any(|x| e.eq_ignore_ascii_case(x)));
-            let old = asset.preview.as_ref().filter(writable);
-            let out = old.cloned().unwrap_or_else(|| asset.folder.join(format!("{}.jpg", asset.name)));
-            Some(PreviewJob { key: asset.key(), file: file.to_path_buf(), out, replaces: old.is_some() })
+            let out = preview_out(asset);
+            let replaces = asset.preview.as_ref() == Some(&out);
+            Some(PreviewJob { key: asset.key(), file: file.to_path_buf(), out, replaces })
         })
         .collect()
 }
@@ -189,9 +194,7 @@ impl OpenLibraryApp {
         if let Some(cache) = cache {
             let _ = index.save(&cache); // only a cache
         }
-        let (names, paths) = self.settings.hidden();
-        self.hidden = crate::library::hidden_folders(&index.folders, &index.roots, &names, &paths);
-        self.shown_dirty = true;
+        self.rebuild_tree();
     }
 
     /// The text of the running batch, for the status bar.
@@ -222,7 +225,7 @@ impl OpenLibraryApp {
             let data = self.data_dir.clone().unwrap_or_else(std::env::temp_dir);
             let config = self.settings.data.get("catalog").and_then(Value::as_object);
             let tools = (self.lang, self.wake.clone());
-            self.catalog = Some(CatalogWindow::new(config, self.index.as_ref(), &self.hidden, self.folder.as_deref(), &data, tools));
+            self.catalog = Some(CatalogWindow::new(config, self.index.as_ref(), &self.hidden, self.side.folder.as_deref(), &data, tools));
         }
         let selected = self.selected_asset();
         ui.menu_button(self.t(Text::Previews), |ui| {
@@ -238,6 +241,7 @@ impl OpenLibraryApp {
                 ui.close();
             }
         });
+        self.relink_menu(ui, selected.clone());
         ui.menu_button(self.t(Text::ModelData), |ui| {
             if ui.add_enabled(selected.is_some(), egui::Button::new(self.t(Text::DataOfSelected))).clicked() {
                 self.read_stats(&selected.into_iter().collect::<Vec<_>>());

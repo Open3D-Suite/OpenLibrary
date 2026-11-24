@@ -2,7 +2,8 @@
 //! The tabs of materials, textures and interiors: folders, cards, the options they are sent with and what is
 //! known of the selected one. Cards are dragged onto 3ds Max.
 
-use crate::foldertree::{self, Folder};
+use crate::favorites::{self, TabView};
+use crate::foldertree::{self, SideTree};
 use crate::interiors::{self, Light, Room};
 use crate::library::{hidden_folders, norm_key};
 use crate::max_session::{MaxReply, MaxSession};
@@ -82,6 +83,18 @@ impl Surface {
         }
     }
 
+    fn favorite_key(&self, roots: &[PathBuf]) -> String {
+        favorites::surface_key(roots, &self.key(), self.folder(), self.name())
+    }
+
+    /// Its image for the quick look: the maker's sample, or the largest there is.
+    fn large(&self, light: Light) -> Option<PathBuf> {
+        match self {
+            Self::Material(m) if m.preview.is_none() => m.pick(Res::Highest).remove(&Channel::Color).or_else(|| m.thumb_source()),
+            _ => self.thumb(light),
+        }
+    }
+
     fn matches(&self, words: &[String]) -> bool {
         let hay = format!("{} {}", self.name(), self.folder().display()).to_lowercase();
         words.iter().all(|w| hay.contains(w.as_str()))
@@ -140,9 +153,9 @@ pub struct SurfacePanel {
     seen: usize,
     view: Option<View>,
     hidden: HashSet<String>,
-    folders: Vec<Folder>,
-    expanded: HashSet<String>,
-    folder: Option<PathBuf>,
+    side: SideTree,
+    tab: TabView,
+    favorite_count: usize,
     search: String,
     shown: Vec<Surface>,
     dirty: bool,
@@ -154,6 +167,7 @@ pub struct SurfacePanel {
     textures: HashMap<String, Option<TextureHandle>>,
     loader: ThumbLoader,
     dragging: bool,
+    look: bool,
     size: [f64; 3],
     sent: Vec<Sent>,
     ask: Option<Ask>,
@@ -195,7 +209,7 @@ fn ratio_text(aspect: Aspect, ratio: f64) -> String {
 }
 
 impl SurfacePanel {
-    pub fn new(kind: &str, roots: &[PathBuf], measures: &[PathBuf], data_dir: &Path, lang: Language, wake: Wake) -> Self {
+    pub fn new(kind: &str, tab: TabView, (roots, measures): (&[PathBuf], &[PathBuf]), data_dir: &Path, lang: Language, wake: Wake) -> Self {
         let cache = data_dir.join("library").join(format!("surf_{}", crate::library::cache_name(roots)));
         let mut index = SurfaceIndex::new(roots, measures);
         let kind_name = kind.to_string();
@@ -227,9 +241,9 @@ impl SurfacePanel {
             seen: 0,
             view: None,
             hidden: HashSet::new(),
-            folders: Vec::new(),
-            expanded: roots.iter().map(|r| norm_key(r)).collect(),
-            folder: None,
+            side: SideTree { expanded: roots.iter().map(|r| norm_key(r)).collect(), favorites: tab.opens_favorites, ..SideTree::default() },
+            tab,
+            favorite_count: 0,
             search: String::new(),
             shown: Vec::new(),
             dirty: true,
@@ -240,6 +254,7 @@ impl SurfacePanel {
             anchor: 0,
             textures: HashMap::new(),
             dragging: false,
+            look: false,
             size: [100.0; 3],
             sent: Vec::new(),
             ask: None,
@@ -264,11 +279,8 @@ impl SurfacePanel {
                 Event::Seen(n) => self.seen = n,
                 Event::Done => self.scanning = false,
                 Event::View(view) => {
-                    let (names, paths) = settings.hidden();
-                    self.hidden = hidden_folders(&view.folders, &self.roots, &names, &paths);
-                    self.folders = foldertree::rows(&self.roots, &view.folders, &self.hidden);
                     self.view = Some(view);
-                    self.dirty = true;
+                    self.settings_changed(settings);
                 }
             }
         }
@@ -290,7 +302,7 @@ impl SurfacePanel {
         }
         let Some(view) = &self.view else { return };
         let words: Vec<String> = self.search.to_lowercase().split_whitespace().map(str::to_string).collect();
-        let base = self.folder.as_deref().map(norm_key);
+        let base = self.side.folder.as_deref().map(norm_key);
         let in_folder = |item: &Surface| {
             let key = norm_key(item.folder());
             let inside = base.as_ref().is_none_or(|b| key == *b || key.starts_with(&format!("{}\\", b.trim_end_matches('\\'))));
@@ -305,6 +317,14 @@ impl SurfacePanel {
         let mut shown: Vec<Surface> = view.items.iter().filter(|i| in_folder(i) && i.matches(&words) && wanted(i)).cloned().collect();
         if self.recent {
             shown.sort_by_key(|i| std::cmp::Reverse(i.mtime()));
+        }
+        let liked = |i: &Surface| favorites::is_favorite(settings, &i.favorite_key(&self.roots));
+        self.favorite_count =
+            if favorites::any(settings) { view.items.iter().filter(|i| !self.hidden.contains(&norm_key(i.folder())) && liked(i)).count() } else { 0 };
+        if self.side.favorites {
+            shown.retain(liked);
+        } else if self.tab.favorites_first && self.favorite_count > 0 {
+            shown.sort_by_cached_key(|i| !liked(i)); // stable: the order of before within each part
         }
         self.shown = shown;
         let keys: HashSet<String> = self.shown.iter().map(Surface::key).collect();
@@ -484,7 +504,7 @@ impl SurfacePanel {
         self.poll(&ctx, tools.settings);
         self.answers(tools);
         self.refresh(tools.settings);
-        egui::Panel::left("surface-tree").resizable(true).default_size(240.0).show(ui, |ui| self.tree(ui));
+        egui::Panel::left("surface-tree").resizable(true).default_size(240.0).show(ui, |ui| self.tree(ui, tools));
         egui::Panel::right("surface-detail").resizable(true).default_size(300.0).show(ui, |ui| {
             egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                 self.options(ui, tools);
@@ -497,17 +517,64 @@ impl SurfacePanel {
         self.question(&ctx, tools);
     }
 
-    fn tree(&mut self, ui: &mut egui::Ui) {
-        if ui.selectable_label(self.folder.is_none(), self.t(Text::AllFolders)).clicked() {
-            self.folder = None;
-            self.dirty = true;
+    fn tree(&mut self, ui: &mut egui::Ui, tools: &mut Tools<'_>) {
+        let total = self.view.as_ref().map_or(0, |v| v.items.iter().filter(|i| !self.hidden.contains(&norm_key(i.folder()))).count());
+        let changed = self.side.show(ui, "surfaces", tools.settings, self.lang, self.tab, (self.favorite_count, total));
+        if changed.settings {
+            self.save_settings(tools);
+            self.settings_changed(tools.settings);
         }
-        let mut chosen = self.folder.clone();
-        if foldertree::show(ui, "surfaces", &self.folders, &mut self.expanded, "", &mut chosen) {
-            self.folder = chosen;
+        if changed.shown {
             self.dirty = true;
             self.loader.clear_queue();
         }
+    }
+
+    /// Works out again what is hidden, the rows of the tree and what is shown.
+    pub fn settings_changed(&mut self, settings: &Settings) {
+        self.dirty = true;
+        let Some(view) = &self.view else { return };
+        let (names, paths) = settings.hidden();
+        self.hidden = hidden_folders(&view.folders, &self.roots, &names, &paths);
+        let items = view.items.iter().map(Surface::folder).filter(|f| !self.hidden.contains(&norm_key(f)));
+        let totals = foldertree::totals(&self.roots, items);
+        // a folder per material does not help to find one: only those with two or more are shown
+        let least = if self.kind == "materials" { 2 } else { 1 };
+        let folders: Vec<PathBuf> = view.folders.iter().filter(|f| totals.get(&norm_key(f)).is_some_and(|n| *n >= least)).cloned().collect();
+        self.side.folders = foldertree::rows(&self.roots, &folders, &self.hidden);
+        for folder in &mut self.side.folders {
+            folder.count = Some(totals.get(&folder.key).copied().unwrap_or(0));
+        }
+    }
+
+    /// The cards for the quick look, and which one is selected.
+    pub fn looks(&self, settings: &Settings) -> (Vec<crate::quicklook::Look>, Option<usize>) {
+        let light = prefs::light(settings);
+        let at = self.shown.iter().position(|i| self.selected.contains(&i.key()));
+        (self.shown.iter().map(|i| (i.name().to_string(), i.large(light))).collect(), at)
+    }
+
+    /// Whether a card was double-clicked, for the quick look.
+    pub fn take_look(&mut self) -> bool {
+        std::mem::take(&mut self.look)
+    }
+
+    fn toggle(&mut self, keys: &[String], tools: &mut Tools<'_>) {
+        favorites::toggle(tools.settings, keys);
+        self.save_settings(tools);
+        self.dirty = true;
+    }
+
+    /// Draws the heart of a card; `true` when it was clicked.
+    fn heart(&mut self, ui: &mut egui::Ui, at: usize, response: &egui::Response, tools: &mut Tools<'_>) -> bool {
+        self.look |= response.double_clicked();
+        let Some(key) = self.shown.get(at).map(|i| i.favorite_key(&self.roots)) else { return false };
+        let on = favorites::is_favorite(tools.settings, &key);
+        let clicked = crate::app::heart(ui, response, on);
+        if clicked {
+            self.toggle(&[key], tools);
+        }
+        clicked
     }
 
     fn combo<T: PartialEq + Copy>(ui: &mut egui::Ui, id: &str, label: &str, options: &[(T, String)], current: &mut T) -> bool {
@@ -741,6 +808,7 @@ impl SurfacePanel {
         let rows = self.shown.len().div_ceil(columns);
         let mut clicked = None;
         let mut action: Option<&'static str> = None;
+        let mut favorite = false;
         egui::ScrollArea::vertical().auto_shrink(false).show_rows(ui, card.y + GAP, rows, |ui, range| {
             for row in range {
                 ui.horizontal(|ui| {
@@ -757,10 +825,19 @@ impl SurfacePanel {
                         if response.clicked() {
                             clicked = Some(at);
                         }
+                        if self.heart(ui, at, &response, tools) {
+                            clicked = None;
+                        }
                         if response.secondary_clicked() && !here {
                             self.select(at, (false, false));
                         }
-                        response.context_menu(|ui| action = self.menu(ui).or(action));
+                        response.context_menu(|ui| {
+                            action = self.menu(ui).or(action);
+                            if ui.button(self.t(Text::FavoriteToggle)).clicked() {
+                                favorite = true;
+                                ui.close();
+                            }
+                        });
                     }
                 });
                 ui.add_space(GAP - ui.spacing().item_spacing.y);
@@ -768,6 +845,10 @@ impl SurfacePanel {
         });
         if let Some(at) = clicked {
             self.select(at, ui.input(|i| (i.modifiers.command, i.modifiers.shift)));
+        }
+        if favorite {
+            let keys: Vec<String> = self.selection().iter().map(|i| i.favorite_key(&self.roots)).collect();
+            self.toggle(&keys, tools);
         }
         if let Some(target) = action {
             let (items, info) = (self.selection(), tools.max.target());

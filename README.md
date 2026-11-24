@@ -29,7 +29,19 @@ else it wrote in `%LOCALAPPDATA%\Open3D\OpenLibrary`; delete those folders too i
 
 ## Use
 
-Being rewritten in Rust; the working version, in Python, is [OpenLibrary-python](https://github.com/daniellopezcastellanos/OpenLibrary-python).
+Open *Settings*, add the folders of your library to its tabs and install the bridge in your 3ds Max (2025 or
+later); restart 3ds Max. Then:
+
+- **Models**: drag a card onto 3ds Max. With Shift it comes in as a Corona or V-Ray proxy, with Ctrl in its
+  original place.
+- **Materials, textures and interiors**: drag a card onto an object or onto the Slate editor.
+- **Catalogue…** opens a download and leaves it in the library under one name.
+
+A library is only folders of yours: OpenLibrary keeps no database and changes nothing in them unless you ask.
+OpenLibrary does not use the internet.
+
+The version before, in Python, is
+[OpenLibrary-python](https://github.com/daniellopezcastellanos/OpenLibrary-python); both can be installed.
 
 OpenLibrary shows itself in the language of the Open3D launcher and the other Open3D apps, English or
 Spanish. Until one is chosen there, it follows Windows: Spanish if Windows is in Spanish, English

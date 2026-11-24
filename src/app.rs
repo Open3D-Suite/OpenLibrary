@@ -3,8 +3,11 @@
 //! the selected model on the right. What it shows comes from the modules of the library; this file only draws
 //! it and passes the clicks on.
 
+mod live;
 mod work;
 
+use crate::favorites::{self, TabView};
+use crate::foldertree::{self, SideTree};
 use crate::library::{Asset, LibraryIndex, hidden_folders, norm_key};
 use crate::max_session::{MaxSession, MergeKind, merge_request};
 use crate::maxfile::{Engine, EngineCache};
@@ -12,11 +15,15 @@ use crate::maxlink::MaxInfo;
 use crate::missing;
 use crate::modelstats::StatsCache;
 use crate::open3d_settings::{self, Language};
+use crate::quicklook::QuickLook;
+use crate::settings::workspace::{self, WsStamp, WsState};
 use crate::settings::{self, Settings};
+use crate::task::Task;
 use crate::texts::{Text, fill};
 use crate::thumbs::ThumbLoader;
 use crate::ui_catalog::CatalogWindow;
 use crate::ui_missing::MissingWindow;
+use crate::ui_settings::{Page, SettingsWindow};
 use crate::ui_surfaces::{SurfacePanel, Tools};
 use eframe::egui::{self, Color32, CornerRadius, Rect, Sense, Stroke, TextureHandle, TextureOptions, Vec2};
 use std::collections::{HashMap, HashSet};
@@ -68,8 +75,9 @@ pub struct OpenLibraryApp {
     scan: Option<(Receiver<Snapshot>, Arc<AtomicBool>)>,
     scanning: bool,
     progress: Option<(usize, usize)>,
-    folder: Option<PathBuf>,
-    expanded: HashSet<String>,
+    side: SideTree,
+    favorite_count: usize,
+    all_count: usize,
     hidden: HashSet<String>,
     search: String,
     shown: Vec<Asset>,
@@ -91,6 +99,12 @@ pub struct OpenLibraryApp {
     missing: Option<MissingWindow>,
     catalog: Option<CatalogWindow>,
     surfaces: Option<SurfacePanel>,
+    live: Option<live::Live>,
+    relink_ask: Option<Vec<(PathBuf, Asset)>>,
+    look: Option<QuickLook>,
+    settings_window: Option<SettingsWindow>,
+    /// Looks at the workspace's file every few seconds, on a thread: the server may be slow.
+    ws_watch: Option<Task<WsStamp>>,
 }
 
 impl OpenLibraryApp {
@@ -135,8 +149,9 @@ impl OpenLibraryApp {
             scan: None,
             scanning: false,
             progress: None,
-            folder: None,
-            expanded: HashSet::new(),
+            side: SideTree::default(),
+            favorite_count: 0,
+            all_count: 0,
             hidden: HashSet::new(),
             search: String::new(),
             shown: Vec::new(),
@@ -158,8 +173,18 @@ impl OpenLibraryApp {
             missing: None,
             catalog: None,
             surfaces: None,
+            live: None,
+            relink_ask: None,
+            look: None,
+            settings_window: None,
+            ws_watch: None,
         };
         app.open_tab(tab, &cc.egui_ctx);
+        app.watch_workspace();
+        let empty = (0..app.settings.libraries().len()).all(|i| app.settings.library_paths(i).is_empty());
+        if empty && app.settings.data.get("setup_done").and_then(|d| d.as_bool()) != Some(true) {
+            app.settings_window = Some(SettingsWindow::new(&app.settings, &app.max, lang, Page::Workspace, true));
+        }
         app
     }
 
@@ -177,7 +202,7 @@ impl OpenLibraryApp {
         }
         self.tab = tab;
         self.index = None;
-        self.folder = None;
+        self.side = SideTree { favorites: self.tab_view().opens_favorites, ..SideTree::default() };
         self.selected = None;
         self.shown.clear();
         self.shown_dirty = true;
@@ -189,7 +214,7 @@ impl OpenLibraryApp {
         if self.tab_kind() != "models" {
             let data = self.data_dir.clone().unwrap_or_else(std::env::temp_dir);
             let kind = self.tab_kind().to_string();
-            self.surfaces = Some(SurfacePanel::new(&kind, &roots, &self.measures_dirs(), &data, self.lang, self.wake.clone()));
+            self.surfaces = Some(SurfacePanel::new(&kind, self.tab_view(), (&roots, &self.measures_dirs()), &data, self.lang, self.wake.clone()));
             return;
         }
         if roots.is_empty() {
@@ -233,7 +258,7 @@ impl OpenLibraryApp {
 
     fn take_snapshots(&mut self) {
         let Some((receive, _)) = &self.scan else { return };
-        let mut ended = false;
+        let (mut ended, mut fresh) = (false, false);
         while let Ok(snapshot) = receive.try_recv() {
             let (index, done) = match snapshot {
                 Snapshot::Progress(folders, models) => {
@@ -242,14 +267,15 @@ impl OpenLibraryApp {
                 }
                 Snapshot::Index { index, done } => (index, done),
             };
-            let (names, paths) = self.settings.hidden();
-            self.hidden = hidden_folders(&index.folders, &index.roots, &names, &paths);
-            if self.expanded.is_empty() {
-                self.expanded.extend(index.roots.iter().map(|r| norm_key(r)));
+            if self.side.expanded.is_empty() {
+                self.side.expanded.extend(index.roots.iter().map(|r| norm_key(r)));
             }
             self.index = Some(index);
-            self.shown_dirty = true;
+            fresh = true;
             ended |= done;
+        }
+        if fresh {
+            self.rebuild_tree();
         }
         if ended {
             self.scanning = false;
@@ -285,12 +311,27 @@ impl OpenLibraryApp {
             return;
         };
         let hidden = &self.hidden;
-        self.shown = index
-            .search(&self.search, self.folder.as_deref(), true)
+        let shown: Vec<Asset> = index
+            .search(&self.search, self.side.folder.as_deref(), true)
             .into_iter()
             .filter(|a| !hidden.contains(&norm_key(&a.folder)))
             .cloned()
             .collect();
+        self.favorite_count = if favorites::any(&self.settings) {
+            index.assets().into_iter().filter(|a| !hidden.contains(&norm_key(&a.folder)) && self.is_favorite(a)).count()
+        } else {
+            0
+        };
+        let (mine, rest): (Vec<Asset>, Vec<Asset>) = shown.into_iter().partition(|a| self.is_favorite(a));
+        self.shown = if self.side.favorites {
+            mine
+        } else if self.tab_view().favorites_first {
+            [mine, rest].concat()
+        } else {
+            let mut all = [mine, rest].concat();
+            all.sort_by_cached_key(|a| a.name.to_lowercase());
+            all
+        };
     }
 
     /// The badges of an asset: its engines, read in the background for files without a suffix.
@@ -325,7 +366,13 @@ impl OpenLibraryApp {
                     }
                 }
             }
-            ui.separator();
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button(self.t(Text::Settings)).clicked() {
+                    self.settings_window = Some(SettingsWindow::new(&self.settings, &self.max, self.lang, Page::Tabs, false));
+                }
+            });
+        });
+        ui.horizontal(|ui| {
             let hint = self.t(Text::Search);
             let search = ui.add(egui::TextEdit::singleline(&mut self.search).hint_text(hint).desired_width(260.0));
             if search.changed() {
@@ -338,69 +385,163 @@ impl OpenLibraryApp {
         });
     }
 
-    fn tree(&mut self, ui: &mut egui::Ui) {
-        let Some(index) = &self.index else { return };
-        let mut children: HashMap<String, Vec<PathBuf>> = HashMap::new();
-        for folder in &index.folders {
-            let key = norm_key(folder);
-            if self.hidden.contains(&key) || index.roots.iter().any(|r| norm_key(r) == key) {
-                continue;
-            }
-            if let Some(parent) = folder.parent() {
-                children.entry(norm_key(parent)).or_default().push(folder.clone());
-            }
+    /// How the tab of this moment shows its folders and favourites.
+    fn tab_view(&self) -> TabView {
+        favorites::tab_view(self.settings.libraries().get(self.tab))
+    }
+
+    fn favorite_key(&self, asset: &Asset) -> String {
+        favorites::model_key(self.index.as_ref().map_or(&[], |i| i.roots.as_slice()), &asset.key())
+    }
+
+    fn is_favorite(&self, asset: &Asset) -> bool {
+        favorites::any(&self.settings) && favorites::is_favorite(&self.settings, &self.favorite_key(asset))
+    }
+
+    fn toggle_favorite(&mut self, asset: &Asset) {
+        let key = self.favorite_key(asset);
+        favorites::toggle(&mut self.settings, &[key]);
+        self.save_settings();
+        self.shown_dirty = true;
+    }
+
+    fn save_settings(&mut self) {
+        if let Err(error) = self.settings.save() {
+            self.notice = Some(fill(self.t(Text::SettingsError), &[("error", &error)]));
         }
-        let roots = index.roots.clone();
-        let mut clicked: Option<Option<PathBuf>> = None;
-        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            if ui.selectable_label(self.folder.is_none(), self.t(Text::AllFolders)).clicked() {
-                clicked = Some(None);
-            }
-            for root in &roots {
-                self.tree_row(ui, root, 0, &children, &mut clicked);
-            }
-        });
-        if let Some(folder) = clicked {
-            self.folder = folder;
+    }
+
+    /// Works out again what is hidden, and the rows of the tree.
+    fn rebuild_tree(&mut self) {
+        let Some(index) = &self.index else { return };
+        let (names, paths) = self.settings.hidden();
+        self.hidden = hidden_folders(&index.folders, &index.roots, &names, &paths);
+        let assets: Vec<&Asset> = index.assets().into_iter().filter(|a| !self.hidden.contains(&norm_key(&a.folder))).collect();
+        let totals = foldertree::totals(&index.roots, assets.iter().map(|a| a.folder.as_path()));
+        self.side.folders = foldertree::rows(&index.roots, &index.folders, &self.hidden);
+        for folder in &mut self.side.folders {
+            folder.count = Some(totals.get(&folder.key).copied().unwrap_or(0));
+        }
+        self.all_count = assets.len();
+        self.shown_dirty = true;
+    }
+
+    fn tree(&mut self, ui: &mut egui::Ui) {
+        let (view, counts) = (self.tab_view(), (self.favorite_count, self.all_count));
+        let changed = self.side.show(ui, "models", &mut self.settings, self.lang, view, counts);
+        if changed.settings {
+            self.save_settings();
+            self.rebuild_tree();
+        }
+        if changed.shown {
             self.shown_dirty = true;
             self.loader.clear_queue();
         }
     }
 
-    fn tree_row(
-        &mut self,
-        ui: &mut egui::Ui,
-        folder: &Path,
-        depth: usize,
-        children: &HashMap<String, Vec<PathBuf>>,
-        clicked: &mut Option<Option<PathBuf>>,
-    ) {
-        let key = norm_key(folder);
-        let kids = children.get(&key);
-        let open = self.expanded.contains(&key);
-        ui.horizontal(|ui| {
-            ui.add_space(depth as f32 * 14.0);
-            if kids.is_some() {
-                if ui.small_button(if open { "−" } else { "+" }).clicked() {
-                    if open {
-                        self.expanded.remove(&key);
-                    } else {
-                        self.expanded.insert(key.clone());
+    /// What goes over the gallery.
+    fn over(&mut self, ctx: &egui::Context) {
+        if self.settings_window.is_none() {
+            self.bridge_prompt(ctx);
+        }
+        self.windows(ctx);
+        self.relink_question(ctx);
+        self.settings_ui(ctx);
+        if self.look.as_mut().is_some_and(|look| !look.show(ctx)) {
+            self.look = None;
+        }
+    }
+
+    /// The size of the thumbnails.
+    fn thumb_slider(&mut self, ui: &mut egui::Ui) {
+        let mut size = self.settings.data.get("thumb_size").and_then(|v| v.as_f64()).unwrap_or(160.0);
+        let response = ui.add(egui::Slider::new(&mut size, 80.0..=400.0).show_value(false));
+        if response.changed() {
+            self.settings.data.insert("thumb_size".into(), (size.round() as i64).into());
+        }
+        if response.drag_stopped() || (response.changed() && !response.dragged()) {
+            self.save_settings();
+        }
+    }
+
+    /// The space bar opens the quick look, when no text is being written.
+    fn keys(&mut self, ctx: &egui::Context) {
+        let space = ctx.input(|i| i.key_pressed(egui::Key::Space));
+        if space && !ctx.egui_wants_keyboard_input() && self.look.is_none() && self.settings_window.is_none() && self.missing.is_none() {
+            self.quick_look();
+        }
+    }
+
+    fn quick_look(&mut self) {
+        let (items, at) = match &self.surfaces {
+            Some(panel) => panel.looks(&self.settings),
+            None => {
+                let at = self.shown.iter().position(|a| Some(a.key()) == self.selected);
+                (self.shown.iter().map(|a| (a.name.clone(), a.thumb_source().map(Path::to_path_buf))).collect(), at)
+            }
+        };
+        if let Some(at) = at {
+            self.look = Some(QuickLook::new(items, at, self.lang, self.wake.clone()));
+        }
+    }
+
+    /// Starts looking at the workspace's file, if one is used.
+    fn watch_workspace(&mut self) {
+        self.ws_watch = self.settings.workspace().map(|folder| {
+            Task::start(self.wake.clone(), move |link| {
+                let mut last = None;
+                while !link.cancelled() {
+                    let stamp = workspace::workspace_stamp(&folder);
+                    if last != Some(stamp) {
+                        last = Some(stamp);
+                        link.send(stamp);
+                    }
+                    for _ in 0..100 {
+                        if link.cancelled() {
+                            return;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                     }
                 }
-            } else {
-                ui.add_space(18.0);
-            }
-            let name = folder.file_name().map_or_else(|| folder.display().to_string(), |n| n.to_string_lossy().into_owned());
-            let selected = self.folder.as_deref().is_some_and(|f| norm_key(f) == key);
-            if ui.selectable_label(selected, name).clicked() {
-                *clicked = Some(Some(folder.to_path_buf()));
-            }
+            })
         });
-        if open && let Some(kids) = kids {
-            for kid in kids {
-                self.tree_row(ui, kid, depth + 1, children, clicked);
-            }
+        if self.settings.ws_state() == WsState::Offline {
+            self.notice = Some(self.t(Text::WsOffline).to_string());
+        }
+    }
+
+    /// Brings what the team changed.
+    fn poll_workspace(&mut self, ctx: &egui::Context) {
+        let Some(stamp) = self.ws_watch.as_ref().and_then(|w| w.poll().pop()) else { return };
+        if stamp.is_none() || (stamp == self.settings.ws_stamp() && self.settings.ws_state() == WsState::Ok) {
+            return;
+        }
+        let changed = self.settings.refresh_shared();
+        if changed.is_empty() {
+            return;
+        }
+        self.notice = Some(self.t(Text::WsRefreshed).to_string());
+        if changed.contains(&"libraries") {
+            self.open_tab(self.settings.current_library(), ctx);
+        } else if self.surfaces.is_none() {
+            self.rebuild_tree();
+        } else if let Some(panel) = &mut self.surfaces {
+            panel.settings_changed(&self.settings);
+        }
+    }
+
+    fn settings_ui(&mut self, ctx: &egui::Context) {
+        let Some(window) = &mut self.settings_window else { return };
+        let answer = window.show(ctx, &mut self.settings, &mut self.max);
+        if answer.close {
+            self.settings_window = None;
+        }
+        if let Some(lang) = answer.language {
+            self.lang = lang;
+        }
+        if answer.saved {
+            self.watch_workspace();
+            self.open_tab(self.settings.current_library(), ctx);
         }
     }
 
@@ -448,6 +589,19 @@ impl OpenLibraryApp {
         response.context_menu(|ui| {
             self.merge_menu(ui, asset);
             ui.separator();
+            let favorite = if self.is_favorite(asset) { Text::FavoriteRemove } else { Text::FavoriteAdd };
+            if ui.button(self.t(favorite)).clicked() {
+                self.toggle_favorite(asset);
+                ui.close();
+            }
+            if ui.button(self.t(Text::MenuPreviewSelection)).clicked() {
+                self.live_preview(asset, false);
+                ui.close();
+            }
+            if ui.button(self.t(Text::MenuPreviewView)).clicked() {
+                self.live_preview(asset, true);
+                ui.close();
+            }
             if ui.button(self.t(Text::MenuPreview)).clicked() {
                 self.ask_previews(std::slice::from_ref(asset));
                 ui.close();
@@ -505,6 +659,14 @@ impl OpenLibraryApp {
         painter.galley(egui::pos2(name_pos.x, name_pos.y - galley.size().y.min(FOOTER) / 2.0), galley, Color32::WHITE);
         if selected {
             painter.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(2.0, ACCENT), egui::StrokeKind::Inside);
+        }
+        if heart(ui, &response, self.is_favorite(asset)) {
+            self.toggle_favorite(asset);
+            return false;
+        }
+        if response.double_clicked() {
+            self.selected = Some(key);
+            self.quick_look();
         }
         response.clicked()
     }
@@ -756,6 +918,23 @@ fn spawn_reader(engines: Arc<EngineCache>, wake: Arc<dyn Fn() + Send + Sync>) ->
     (jobs, found)
 }
 
+/// The heart at the corner of a card; `true` when it was clicked.
+pub(crate) fn heart(ui: &mut egui::Ui, card: &egui::Response, on: bool) -> bool {
+    let rect = Rect::from_min_size(card.rect.right_bottom() - Vec2::splat(FOOTER), Vec2::splat(FOOTER)).shrink(3.0);
+    if !on && !card.hovered() && !ui.rect_contains_pointer(rect) {
+        return false;
+    }
+    let response = ui.interact(rect, card.id.with("heart"), Sense::click());
+    let color = if on { ACCENT } else { ui.visuals().weak_text_color() };
+    // two circles and the point below: the fonts have no heart
+    let (painter, at, r) = (ui.painter(), rect.center(), 3.6);
+    painter.circle_filled(at + Vec2::new(-r * 0.92, -r * 0.5), r, color);
+    painter.circle_filled(at + Vec2::new(r * 0.92, -r * 0.5), r, color);
+    let point = [Vec2::new(-r * 1.68, r * 0.12), Vec2::new(0.0, -r * 0.5), Vec2::new(r * 1.68, r * 0.12), Vec2::new(0.0, r * 1.9)];
+    painter.add(egui::Shape::convex_polygon(point.iter().map(|p| at + *p).collect(), color, Stroke::NONE));
+    response.clicked()
+}
+
 fn fit_inside(size: Vec2, area: Rect) -> Rect {
     let scale = (area.width() / size.x).min(area.height() / size.y);
     Rect::from_center_size(area.center(), size * scale)
@@ -793,6 +972,8 @@ impl eframe::App for OpenLibraryApp {
         self.take_snapshots();
         self.take_loaded(&ctx);
         self.poll_work();
+        self.poll_live();
+        self.poll_workspace(&ctx);
         self.refresh_shown();
         for done in self.max.poll() {
             self.notice = Some(done.text);
@@ -800,6 +981,7 @@ impl eframe::App for OpenLibraryApp {
         if self.catalogue(ui) {
             return;
         }
+        self.keys(&ctx);
         egui::Panel::top("top").show(ui, |ui| {
             ui.add_space(4.0);
             self.top_bar(ui);
@@ -825,6 +1007,7 @@ impl eframe::App for OpenLibraryApp {
                     self.cancel_work();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.thumb_slider(ui);
                     ui.label(egui::RichText::new(self.connection_text()).small().weak());
                 });
             });
@@ -832,9 +1015,12 @@ impl eframe::App for OpenLibraryApp {
         if let Some(mut panel) = self.surfaces.take() {
             let mut tools = Tools { settings: &mut self.settings, max: &mut self.max, notice: &mut self.notice };
             panel.show(ui, &self.search, &mut tools);
+            let look = panel.take_look();
             self.surfaces = Some(panel);
-            self.bridge_prompt(&ctx);
-            self.windows(&ctx);
+            if look {
+                self.quick_look();
+            }
+            self.over(&ctx);
             return;
         }
         if self.index.is_some() {
@@ -845,8 +1031,7 @@ impl eframe::App for OpenLibraryApp {
         }
         egui::CentralPanel::default().show(ui, |ui| self.gallery(ui));
         self.drag(&ctx);
-        self.bridge_prompt(&ctx);
-        self.windows(&ctx);
+        self.over(&ctx);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

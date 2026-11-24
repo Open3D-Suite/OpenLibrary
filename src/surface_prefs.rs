@@ -56,19 +56,8 @@ impl Mapping {
 /// The key a material is remembered by: relative to its root folder ("02_poliigon/bricks/oak|pbr"), so that it
 /// is the same with the library open as a drive or as a server.
 pub fn stored_key(roots: &[PathBuf], material: &Material) -> String {
-    let full = norm_key(&material.folder.join(&material.name));
     let suffix = if material.is_library() { "|mat" } else { "|pbr" };
-    for root in roots {
-        let root = norm_key(root).trim_end_matches('\\').to_string();
-        let base = root.rsplit('\\').next().unwrap_or_default();
-        if full == root {
-            return format!("{base}/.{suffix}");
-        }
-        if let Some(rel) = full.strip_prefix(&format!("{root}\\")) {
-            return format!("{base}/{}{suffix}", rel.replace('\\', "/"));
-        }
-    }
-    material.key()
+    crate::favorites::rel_key(roots, &norm_key(&material.folder.join(&material.name)), suffix)
 }
 
 /// What is remembered of a material; the Python version's oldest keys, the whole path, are read too.

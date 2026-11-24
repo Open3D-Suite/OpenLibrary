@@ -5,6 +5,8 @@
 //! The file is kept as JSON values, so that keys this version does not know (written by a newer one, or by the
 //! Python version it replaces) are kept as they are. The defaults fill in what the file lacks.
 
+pub mod workspace;
+
 use serde_json::{Map, Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -156,6 +158,8 @@ pub struct Settings {
     /// What the file held when it was last read or written, to tell what this copy changed.
     synced: Map<String, Value>,
     disk: Option<(SystemTime, u64)>,
+    /// The workspace's file.
+    shared: workspace::Shared,
 }
 
 impl Settings {
@@ -169,7 +173,9 @@ impl Settings {
             data.insert("libraries".into(), libraries);
             data
         });
-        Self { path: path.to_path_buf(), synced: data.clone(), data, disk: stamp(path) }
+        let mut settings = Self { path: path.to_path_buf(), synced: data.clone(), data, disk: stamp(path), shared: workspace::Shared::default() };
+        settings.load_shared();
+        settings
     }
 
     /// Writes the settings without undoing what another OpenLibrary saved meanwhile: if the file changed
@@ -208,6 +214,7 @@ impl Settings {
         fs::rename(&tmp, &self.path).map_err(|e| e.to_string())?;
         self.synced = self.data.clone();
         self.disk = stamp(&self.path);
+        self.save_shared();
         Ok(())
     }
 
@@ -248,15 +255,25 @@ impl Settings {
 
     /// Hides the folders of this name in the tree.
     pub fn hide_name(&mut self, name: &str) {
-        if self.hidden().0.iter().any(|n| n.eq_ignore_ascii_case(name)) {
-            return;
+        if !self.hidden().0.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+            self.hide("names", name);
         }
+    }
+
+    /// Hides this folder in the tree.
+    pub fn hide_path(&mut self, path: &Path) {
+        if !self.hidden().1.iter().any(|p| p == path) {
+            self.hide("paths", &path.display().to_string());
+        }
+    }
+
+    fn hide(&mut self, list: &str, value: &str) {
         let hidden = self.data.entry("hidden_folders").or_insert_with(|| json!({}));
         if !hidden.is_object() {
             *hidden = json!({});
         }
-        if let Some(list) = hidden.as_object_mut().and_then(|h| h.entry("names").or_insert_with(|| json!([])).as_array_mut()) {
-            list.push(name.into());
+        if let Some(list) = hidden.as_object_mut().and_then(|h| h.entry(list).or_insert_with(|| json!([])).as_array_mut()) {
+            list.push(value.into());
         }
     }
 }

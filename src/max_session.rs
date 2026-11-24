@@ -177,12 +177,17 @@ impl MaxSession {
 
     /// Installs or updates the bridge in these 3ds Max; the text to show.
     pub fn install(&mut self, targets: &[MaxTarget], lang: crate::open3d_settings::Language) -> String {
+        self.install_with(targets, None, lang)
+    }
+
+    /// The same, with or without the toolbar button; `None` keeps what each has.
+    pub fn install_with(&mut self, targets: &[MaxTarget], toolbar: Option<bool>, lang: crate::open3d_settings::Language) -> String {
         let (Some(sealed), Ok(exe)) = (&self.sealed, std::env::current_exe()) else {
             return fill(Text::BridgeError.get(lang), &[("max", &"3ds Max"), ("error", &"no token")]);
         };
         let mut errors = Vec::new();
         for target in targets {
-            if let Err(error) = target.install(&exe, sealed, Some(target.toolbar())) {
+            if let Err(error) = target.install(&exe, sealed, toolbar) {
                 errors.push(fill(Text::BridgeError.get(lang), &[("max", &target.label()), ("error", &error)]));
             }
         }

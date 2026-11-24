@@ -98,6 +98,23 @@ impl MaxTarget {
         self.write_app_json(exe, sealed_token, toolbar)
     }
 
+    /// Takes the bridge out: its own files, and its folders when nothing else is left in them.
+    pub fn uninstall(&self) -> Result<(), String> {
+        let folder = self.folder();
+        let files = FILES.iter().map(|(rel, _)| folder.join(rel)).chain([self.app_json(), self.startup()]);
+        for file in files.filter(|f| f.exists()) {
+            fs::remove_file(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+        }
+        let package = folder.join("olib_bridge");
+        let _ = fs::remove_dir_all(package.join("__pycache__")); // what Python compiled of them
+        for dir in [Some(package.as_path()), Some(folder.as_path()), folder.parent()].into_iter().flatten() {
+            if fs::remove_dir(dir).is_err() {
+                break; // something of somebody else's is in it
+            }
+        }
+        Ok(())
+    }
+
     fn write_app_json(&self, exe: &Path, sealed_token: &str, toolbar: bool) -> Result<(), String> {
         let data = json!({"command": [exe.display().to_string()], "toolbar": toolbar, "token_dpapi": sealed_token});
         write_whole(&self.app_json(), &serde_json::to_vec_pretty(&data).map_err(|e| e.to_string())?)
@@ -237,5 +254,20 @@ mod tests {
         fs::write(targets[0].startup(), b"-- old\n").unwrap();
         let (missing, old) = pending(&targets, &[2026]);
         assert_eq!((missing.len(), old.len()), (0, 1)); // an old bridge is always told
+    }
+
+    #[test]
+    fn taking_the_bridge_out_leaves_what_is_not_its_own() {
+        let dir = Scratch::new("uninstall");
+        let target = MaxTarget::new(&dir.0.join("2026 - 64bit").join("ENU"));
+        target.install(Path::new("S:\\OpenLibrary.exe"), "00", Some(false)).unwrap();
+        assert!(target.installed());
+        target.uninstall().unwrap();
+        assert!(!target.installed() && !target.folder().exists() && !target.startup().exists());
+        target.install(Path::new("S:\\OpenLibrary.exe"), "00", Some(false)).unwrap();
+        let other = target.folder().join("notes.txt");
+        fs::write(&other, b"mine").unwrap();
+        target.uninstall().unwrap();
+        assert!(other.exists() && !target.app_json().exists());
     }
 }

@@ -37,8 +37,8 @@ texts! {
     ScanProgress => "Reading the library: {folders} folders, {models} models so far…",
         "Leyendo la biblioteca: {folders} carpetas, {models} modelos por ahora…";
     Models => "{count} models", "{count} modelos";
-    NoFolders => "This tab has no folders yet. Add them in the settings of the Python version for now.",
-        "Esta pestaña aún no tiene carpetas. Por ahora, añádelas en los ajustes de la versión Python.";
+    NoFolders => "This tab has no folders yet. Add them in Settings.",
+        "Esta pestaña aún no tiene carpetas. Añádelas en Ajustes.";
     NoModels => "No models here.", "Aquí no hay modelos.";
     NoPreview => "no preview", "sin preview";
     Loading => "loading…", "cargando…";
@@ -412,6 +412,263 @@ texts! {
         "No hay objetos seleccionados en 3ds Max: selecciónalos o usa el editor Slate.";
     PutNoWindow => "No objects are selected in 3ds Max: select the window, or make it.",
         "No hay objetos seleccionados en 3ds Max: selecciona la ventana o créala.";
+    IconFolder => "Folder", "Carpeta";
+    IconTree => "Tree", "Árbol";
+    IconPlant => "Plant", "Planta";
+    IconSofa => "Sofa", "Sofá";
+    IconChair => "Chair", "Silla";
+    IconTable => "Table", "Mesa";
+    IconBed => "Bed", "Cama";
+    IconLamp => "Lamp", "Lámpara";
+    IconBuilding => "Building", "Edificio";
+    IconDoor => "Door / window", "Puerta / ventana";
+    IconCar => "Vehicle", "Vehículo";
+    IconPerson => "People", "Personas";
+    IconBath => "Bathroom", "Baño";
+    IconKitchen => "Kitchen", "Cocina";
+    IconDecor => "Decoration", "Decoración";
+    IconImage => "Textures / maps", "Texturas / mapas";
+    IconBox => "Box", "Caja";
+    IconStar => "Star", "Estrella";
+    ColorRed => "Red", "Rojo";
+    ColorOrange => "Orange", "Naranja";
+    ColorAmber => "Amber", "Ámbar";
+    ColorGreen => "Green", "Verde";
+    ColorTurquoise => "Turquoise", "Turquesa";
+    ColorBlue => "Blue", "Azul";
+    ColorViolet => "Violet", "Violeta";
+    ColorPink => "Pink", "Rosa";
+    ColorGrey => "Grey", "Gris";
+    Favorites => "Favourites",
+        "Favoritos";
+    FavoriteAdd => "Add to favourites",
+        "Añadir a favoritos";
+    FavoriteRemove => "Remove from favourites",
+        "Quitar de favoritos";
+    FavoriteToggle => "Add to or remove from favourites",
+        "Añadir o quitar de favoritos";
+    FolderColor => "Colour",
+        "Color";
+    FolderNoColor => "No colour",
+        "Sin color";
+    FolderIcon => "Icon",
+        "Icono";
+    FolderIconAuto => "By its name",
+        "Automático (por el nombre)";
+    FolderReveal => "Show in Explorer",
+        "Mostrar en el Explorador";
+    FolderHide => "Hide this folder",
+        "Ocultar esta carpeta";
+    FolderHideName => "Hide all those called {name}",
+        "Ocultar todas las que se llamen {name}";
+    MenuPreviewSelection => "Make its preview with what is selected in 3ds Max",
+        "Hacer su preview con lo seleccionado en 3ds Max";
+    MenuPreviewView => "Make its preview from my view in 3ds Max",
+        "Hacer su preview desde mi vista de 3ds Max";
+    PreviewMaking => "3ds Max is making the preview…",
+        "3ds Max está haciendo la preview…";
+    PreviewMade => "Preview saved.",
+        "Preview guardada.";
+    PreviewNotMade => "The preview could not be made (see the MAXScript Listener).",
+        "No se pudo hacer la preview (mira el MAXScript Listener).";
+    Relink => "Lost paths",
+        "Rutas perdidas";
+    RelinkScene => "Find those of the scene open in 3ds Max",
+        "Buscar las de la escena abierta en 3ds Max";
+    RelinkSelected => "Find those inside the .max of the selected model…",
+        "Buscar las de dentro del .max seleccionado…";
+    RelinkAll => "Find those inside the .max of all the models here ({count})…",
+        "Buscar las de dentro de los .max de todos los modelos de aquí ({count})…";
+    RelinkingScene => "Looking for the lost files of the scene (large folders take a while)…",
+        "Buscando los archivos perdidos de la escena (en carpetas grandes tarda)…";
+    RelinkAsk => "The paths inside {count} .max files of the library are going to be written again. Go on?",
+        "Se van a reescribir las rutas de dentro de {count} archivos .max de la biblioteca. ¿Seguir?";
+    Relinked => "Paths found: {fixed}. Still lost: {missing}.",
+        "Rutas encontradas: {fixed}. Siguen perdidas: {missing}.";
+    RelinkFailed => "Files that could not be written: {count}.",
+        "Archivos que no se pudieron escribir: {count}.";
+    Settings => "Settings",
+        "Ajustes";
+    Accept => "Accept",
+        "Aceptar";
+    Choose => "Choose…",
+        "Elegir…";
+    Welcome => "Welcome to OpenLibrary. Choose here whether you share a workspace with your team, add the folders of your library in Tabs, and connect your 3ds Max.",
+        "Bienvenido a OpenLibrary. Elige aquí si compartes un espacio de trabajo con tu equipo, añade las carpetas de tu biblioteca en Pestañas y conecta tu 3ds Max.";
+    PageTabs => "Tabs",
+        "Pestañas";
+    PageImport => "Import",
+        "Importación";
+    PagePreview => "Preview",
+        "Preview";
+    PageMax => "3ds Max",
+        "3ds Max";
+    PageWorkspace => "Workspace",
+        "Espacio de trabajo";
+    PageLanguage => "Language",
+        "Idioma";
+    SetTabs => "Tabs of the window",
+        "Pestañas de la ventana";
+    SetNewTab => "New tab",
+        "Nueva pestaña";
+    SetAddTab => "Add",
+        "Añadir";
+    SetRemoveTab => "Remove",
+        "Quitar";
+    SetNothingDeleted => "Removing a tab or a folder deletes nothing from the disk.",
+        "Quitar una pestaña o una carpeta no borra nada del disco.";
+    SetName => "Name",
+        "Nombre";
+    SetContent => "Content",
+        "Contenido";
+    SetOpens => "When it opens, show",
+        "Al abrir, mostrar";
+    SetRowFavorites => "Show Favourites above the tree",
+        "Enseñar «Favoritos» sobre el árbol";
+    SetRowAll => "Show All above the tree",
+        "Enseñar «Todo» sobre el árbol";
+    SetFolders => "Folders",
+        "Carpetas";
+    SetAddFolder => "Add folder…",
+        "Añadir carpeta…";
+    SetRemoveFolder => "Remove from the list",
+        "Quitar de la lista";
+    KindModels => "3D models",
+        "Modelos 3D";
+    KindMaterials => "Materials",
+        "Materiales";
+    KindTextures => "Textures",
+        "Texturas";
+    KindInteriors => "Interiors (wParallax)",
+        "Interiores (wParallax)";
+    ShowBoth => "Everything, the favourites first",
+        "Todo, con los favoritos primero";
+    ShowFavorites => "Only the favourites",
+        "Solo los favoritos";
+    ShowAll => "Everything",
+        "Todo (sin poner los favoritos primero)";
+    ImpGroup => "Group the model",
+        "Agrupar el modelo al importar";
+    ImpLayer => "Layer",
+        "Capa";
+    LayerAsset => "A layer with the model's name",
+        "Capa con el nombre del modelo";
+    LayerCurrent => "The current layer",
+        "Capa actual";
+    LayerFile => "The layers of the file",
+        "Mantener las capas del archivo";
+    ImpObjects => "Repeated objects",
+        "Objetos duplicados";
+    DupRenameAuto => "Rename them",
+        "Renombrar automáticamente";
+    DupBoth => "Keep both (same name)",
+        "Mantener ambos (mismo nombre)";
+    DupSkip => "Skip them",
+        "Saltar los repetidos";
+    DupReplace => "Replace those of the scene",
+        "Reemplazar los de la escena";
+    DupAsk => "Ask each time",
+        "Preguntar cada vez";
+    ImpMaterials => "Repeated materials",
+        "Materiales duplicados";
+    MatScene => "Use the scene's",
+        "Usar los de la escena";
+    MatFile => "Use the file's",
+        "Usar los del archivo";
+    MatRename => "Rename them",
+        "Renombrar";
+    ImpLights => "Bring the lights",
+        "Importar luces";
+    ImpCameras => "Bring the cameras",
+        "Importar cámaras";
+    ImpSurface => "Rest on surfaces when placing",
+        "Apoyar sobre superficies al colocar";
+    ImpMultiple => "Go on placing instances with each click (Esc ends)",
+        "Seguir colocando instancias con cada clic (Esc para terminar)";
+    ProxyMode => "Mode",
+        "Modo";
+    ProxySingle => "One proxy per model",
+        "Todo en uno (un proxy por modelo)";
+    ProxyPerObject => "One per object",
+        "Uno por objeto";
+    ProxyDisplay => "In the viewport",
+        "Ver en el visor";
+    ProxyBox => "Box (the lightest)",
+        "Caja (lo más ligero)";
+    ProxyPoints => "Preview (points)",
+        "Vista previa (nube de puntos)";
+    ProxyMesh => "Whole mesh",
+        "Malla completa";
+    ProxyWhere => "Save the proxies",
+        "Guardar proxies";
+    ProxyBeside => "Beside the model (_proxies folder)",
+        "Junto al modelo (carpeta _proxies)";
+    ProxyCustom => "In another folder",
+        "En otra carpeta";
+    ImpRelink => "Find the lost textures when importing",
+        "Re-enlazar texturas perdidas al importar";
+    ImpDirs => "More folders to look in (besides the model's)",
+        "Carpetas extra donde buscar (además de la del modelo)";
+    PrevSize => "Size (px)",
+        "Tamaño (px)";
+    PrevMethod => "Method",
+        "Método";
+    PrevRender => "Render with the scene's renderer",
+        "Render con el motor de la escena";
+    PrevViewport => "Capture of the viewport (quick)",
+        "Captura del visor (rápido)";
+    PrevMargin => "Margin around",
+        "Margen de encuadre";
+    PrevElevation => "Camera height (°)",
+        "Altura de cámara (°)";
+    PrevAzimuth => "Camera turn (°)",
+        "Giro de cámara (°)";
+    BridgeWhat => "To drag models and materials into the scene, each 3ds Max needs a small bridge, without windows or menus, which listens only on this computer. Restart 3ds Max after installing it.",
+        "Para arrastrar modelos y materiales a la escena, cada 3ds Max necesita un puente pequeño, sin ventanas ni menús, que escucha solo en este equipo. Reinicia 3ds Max después de instalarlo.";
+    BridgeToolbar => "With a toolbar button that opens OpenLibrary",
+        "Con un botón en la barra de herramientas que abre OpenLibrary";
+    BridgeAbsent => "not installed",
+        "no instalado";
+    BridgeIsOld => "out of date",
+        "desactualizado";
+    BridgeInstalled => "installed",
+        "instalado";
+    InstallAgain => "Install again",
+        "Reinstalar";
+    BridgeRemove => "Remove",
+        "Quitar";
+    BridgeAskRemove => "Remove the bridge of {max}?",
+        "¿Quitar el puente de {max}?";
+    BridgeRemoved => "The bridge of {max} was removed.",
+        "Se ha quitado el puente de {max}.";
+    BridgeNoMax => "No 3ds Max 2025 or later was found on this computer.",
+        "No se encuentra 3ds Max 2025 o posterior en este equipo.";
+    WsWhat => "If several of you work with one library, choose the same folder of the server: the tabs and their folders, the hidden folders, the folder icons, the sizes and mapping of each material and the preview settings are kept there, and the whole team sees them. What is yours (favourites, thumbnail size) stays on your computer.",
+        "Si trabajáis varios con la misma biblioteca, elegid todos la misma carpeta del servidor: las pestañas y sus carpetas, las carpetas ocultas, los iconos de carpeta, las medidas y el mapeado de cada material y los ajustes de preview se guardan ahí y los ve todo el equipo. Lo tuyo (favoritos, tamaño de miniatura) se queda en tu equipo.";
+    WsAlone => "Only on this computer",
+        "Solo en este equipo";
+    WsShared => "In a shared folder",
+        "En una carpeta compartida";
+    WsLocal => "Everything is kept on this computer.",
+        "Todo se guarda solo en este equipo.";
+    WsOffline => "The shared workspace cannot be reached: this computer's last copy is used, and the changes are joined when it is back.",
+        "Sin conexión con el espacio de trabajo compartido: se usa la última copia de este equipo y los cambios se juntan al volver.";
+    WsJoined => "You are in this workspace.",
+        "Estás en este espacio de trabajo.";
+    WsWillJoin => "When you accept, that workspace is used; if there is none, it is made with your tabs and sizes.",
+        "Al aceptar se usa ese espacio de trabajo; si no existe, se crea con tus pestañas y medidas.";
+    WsTip => "Write the folders of the tabs the same way on every computer (better \\\\SERVER\\… than a drive letter).",
+        "Escribid igual las carpetas de las pestañas en todos los equipos (mejor \\\\SERVIDOR\\… que una letra de unidad).";
+    WsNotFound => "That folder was not found.",
+        "No se encuentra esa carpeta.";
+    WsAskTheirs => "That folder has the team's workspace: its tabs, hidden folders and sizes take the place of yours. Accept again to go on.",
+        "Esa carpeta ya tiene el espacio de trabajo del equipo: sus pestañas, carpetas ocultas y medidas sustituyen a las tuyas. Pulsa Aceptar otra vez para seguir.";
+    WsRefreshed => "Updated with what the team changed.",
+        "Actualizado con los cambios del equipo.";
+    LanguageWhat => "The language of every Open3D app.",
+        "El idioma de todas las aplicaciones Open3D.";
+    LanguageWindows => "That of Windows",
+        "El de Windows";
     SettingsError => "The settings could not be saved: {error}", "No se pudieron guardar los ajustes: {error}";
 }
 
@@ -437,6 +694,22 @@ mod tests {
             assert!(!en.trim().is_empty(), "{text:?} has no English");
             assert!(!es.trim().is_empty(), "{text:?} has no Spanish");
             assert_eq!(places(en), places(es), "{text:?} names other values in Spanish");
+        }
+    }
+
+    #[test]
+    fn the_fonts_have_every_letter_and_sign() {
+        use eframe::egui;
+        let ctx = egui::Context::default();
+        ctx.run_ui(egui::RawInput::default(), |_| {}).textures_delta.clear(); // the fonts load in a frame
+        // besides the texts, the signs the windows draw with a font
+        let mut all = String::from("+−×^·…");
+        for text in Text::ALL {
+            all.push_str(text.get(Language::English));
+            all.push_str(text.get(Language::Spanish));
+        }
+        for c in all.chars().filter(|c| !c.is_control()) {
+            assert!(ctx.fonts_mut(|f| f.has_glyph(&egui::FontId::default(), c)), "{c:?}");
         }
     }
 
