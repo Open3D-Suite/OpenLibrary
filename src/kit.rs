@@ -279,7 +279,7 @@ pub fn sized_button(ui: &mut Ui, kind: Kind, icon: Option<&str>, text: &str, wid
             let square = Rect::from_center_size(egui::pos2(left + 8.0, rect.center().y), Vec2::splat(16.0));
             paint_icon(painter, square, icon, fade(ink));
         }
-        painter.galley_with_override_text_color(egui::pos2(left + side, rect.center().y - galley.size().y / 2.0), galley, fade(ink));
+        painter.galley_with_override_text_color(egui::pos2(left + side, rect.center().y - galley.size().y / 2.0 + 1.5), galley, fade(ink));
     }
     let label = text.to_string();
     response.widget_info(move || egui::WidgetInfo::labeled(egui::Role::Button, enabled, label.clone()));
@@ -311,10 +311,19 @@ pub fn chip(ui: &mut Ui, text: &str, on: bool) -> Response {
         (false, false) => (Color32::TRANSPARENT, p.border, p.muted),
     };
     ui.painter().rect(rect, 0.0, fill, Stroke::new(1.0, border), egui::StrokeKind::Inside);
-    ui.painter().galley_with_override_text_color(rect.center() - galley.size() / 2.0, galley, ink);
+    ui.painter().galley_with_override_text_color(rect.center() - galley.size() / 2.0 + Vec2::new(0.0, 1.5), galley, ink);
     let label = text.to_string();
     response.widget_info(move || egui::WidgetInfo::selected(egui::Role::CheckBox, true, on, label.clone()));
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Draws in a part of the window, and nowhere else.
+pub fn inside<R>(ui: &mut Ui, rect: Rect, add: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
+        ui.set_clip_rect(rect.expand(1.0).intersect(ui.clip_rect()));
+        add(ui)
+    })
+    .inner
 }
 
 /// A tab of the header: capital letters, and a line below the one shown.

@@ -163,6 +163,49 @@ unsafe extern "system" {
     fn GetAncestor(window: *mut std::ffi::c_void, flags: u32) -> *mut std::ffi::c_void;
     fn GetWindowThreadProcessId(window: *mut std::ffi::c_void, process: *mut u32) -> u32;
     fn AllowSetForegroundWindow(process: u32) -> i32;
+    fn GetTopWindow(window: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+    fn GetWindow(window: *mut std::ffi::c_void, command: u32) -> *mut std::ffi::c_void;
+    fn IsWindowVisible(window: *mut std::ffi::c_void) -> i32;
+    fn IsIconic(window: *mut std::ffi::c_void) -> i32;
+}
+
+/// Where the mouse pointer is on the screen, in pixels.
+// `unsafe` is allowed here because this function calls Windows itself (GetCursorPos).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn cursor_pos() -> Option<(i32, i32)> {
+    let mut point = Point::default();
+    // SAFETY: a plain Win32 call; `point` lives on the stack until it returns.
+    let ok = unsafe { GetCursorPos(&mut point) != 0 };
+    ok.then_some((point.x, point.y))
+}
+
+/// Of these processes, the one whose window is the highest on the screen.
+// `unsafe` is allowed here because this function calls Windows itself (GetTopWindow, GetWindow, IsWindowVisible,
+// IsIconic, GetWindowThreadProcessId).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn front_pid(pids: &[u32]) -> Option<u32> {
+    const GW_HWNDNEXT: u32 = 2;
+    // SAFETY: plain Win32 calls; a window that closes meanwhile only makes them fail, the pid is on the stack, and
+    // the list is walked a bounded number of times.
+    unsafe {
+        let mut window = GetTopWindow(std::ptr::null_mut());
+        for _ in 0..10_000 {
+            if window.is_null() {
+                return None;
+            }
+            if IsWindowVisible(window) != 0 && IsIconic(window) == 0 {
+                let mut pid = 0u32;
+                GetWindowThreadProcessId(window, &mut pid);
+                if pids.contains(&pid) {
+                    return Some(pid);
+                }
+            }
+            window = GetWindow(window, GW_HWNDNEXT);
+        }
+    }
+    None
 }
 
 /// The process that owns the window under the mouse pointer, wherever on the screen it is.
@@ -282,6 +325,19 @@ pub fn reveal(path: &std::path::Path) {
     {
         use std::os::windows::process::CommandExt;
         command.raw_arg(if path.is_dir() { format!("\"{text}\"") } else { format!("/select,\"{text}\"") });
+    }
+    let _ = command.spawn(); // without Explorer there is nothing to show
+}
+
+/// Opens a document with the program Windows has for it. Only for kinds of file that are not run.
+pub fn open_document(path: &std::path::Path) {
+    let root = std::env::var_os("SystemRoot").map_or_else(|| std::path::PathBuf::from("C:/Windows"), std::path::PathBuf::from);
+    let mut command = std::process::Command::new(root.join("explorer.exe"));
+    let text = path.display().to_string().replace('"', "");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.raw_arg(format!("\"{text}\""));
     }
     let _ = command.spawn(); // without Explorer there is nothing to show
 }

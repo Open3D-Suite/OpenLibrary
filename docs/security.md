@@ -25,6 +25,8 @@ against. It follows the checklist of the Open3D-SDK; a change to any of these up
   closed. A silent one closes after a minute.
 - Only the commands of `COMMANDS` run. Their arguments are checked: files must exist and be of the kind expected, and
   engines, channels, targets and sizes come from fixed lists.
+- A model brought in is marked in its objects' user properties with a hash of its place in the library (letters and
+  digits only), so that it can be found again.
 - No code is built from text. `bridge/tests` lists every place that could run a text or a file, and fails on a new one.
   The scripts of a 3ds Max in the background have only paths of the app's own folder and numbers in them; the files to
   work on go in a list, as data.
@@ -47,6 +49,8 @@ It never asks for administrator rights, never uses the internet and downloads no
   as its *Preferences > Security*: keep it on, and do not open files you do not trust. The same goes for `.mat`
   libraries and for the OSL shaders of a library.
 - **Programs of the same Windows user.** They can read what that user can, the token included.
+- **Files of a download.** A double click in the catalogue opens only images and texts; anything else is shown in its
+  folder, not opened.
 - **The password of an archive** is given to the unpacker on its command line, where other programs of the same user can
   see it while it extracts.
 - **Who can write in the shared workspace** can change the tabs, sizes and hidden folders of the team.

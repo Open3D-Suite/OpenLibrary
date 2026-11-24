@@ -9,12 +9,12 @@ use crate::maxfile::Engine;
 use crate::modelstats;
 use crate::task::Task;
 use crate::texts::{Text, fill};
-use crate::ui_catalog::CatalogWindow;
 use crate::ui_missing::MissingWindow;
 use eframe::egui;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub(super) enum Event {
@@ -54,7 +54,7 @@ pub(super) fn preview_out(asset: &Asset) -> PathBuf {
 
 /// The previews to make of these models: the file by engine (Corona first), and where it goes: in the place of
 /// the one there is, if 3ds Max can write it, or beside the model.
-fn preview_jobs(assets: &[Asset]) -> Vec<PreviewJob> {
+fn preview_jobs(assets: &[Arc<Asset>]) -> Vec<PreviewJob> {
     assets
         .iter()
         .filter_map(|asset| {
@@ -81,7 +81,7 @@ fn preview_job(jobs: &[PreviewJob], settings: Option<&Value>) -> Job {
 
 impl OpenLibraryApp {
     fn work_dir(&self, name: &str) -> PathBuf {
-        self.data_dir.clone().unwrap_or_else(std::env::temp_dir).join("batch").join(format!("{name}-{}", std::process::id()))
+        self.data_dir.join("batch").join(format!("{name}-{}", std::process::id()))
     }
 
     fn start(&mut self, kind: Kind) {
@@ -110,21 +110,35 @@ impl OpenLibraryApp {
     }
 
     /// Asks before making previews, because it writes in the library.
-    pub(super) fn ask_previews(&mut self, assets: &[Asset]) {
+    pub(super) fn ask_previews(&mut self, assets: &[Arc<Asset>]) {
         let jobs = preview_jobs(assets);
         if !jobs.is_empty() {
             self.preview_ask = Some(jobs);
         }
     }
 
-    /// Reads faces, vertices and animation of these models.
-    pub(super) fn read_stats(&mut self, assets: &[Asset]) {
-        let files: Vec<PathBuf> = assets.iter().flat_map(Asset::all_files).filter(|f| self.stats.get(f).is_none()).map(Path::to_path_buf).collect();
+    /// Reads faces, vertices and animation of these models; those read already too when `again` and all are.
+    pub(super) fn read_stats(&mut self, assets: &[Arc<Asset>], again: bool) {
+        let all: Vec<PathBuf> = assets.iter().flat_map(|a| a.all_files()).map(Path::to_path_buf).collect();
+        let mut files: Vec<PathBuf> = all.iter().filter(|f| self.stats.get(f).is_none()).cloned().collect();
+        if files.is_empty() && again {
+            files = all;
+        }
         if files.is_empty() {
             self.notice = Some(self.t(Text::StatsAllRead).to_string());
             return;
         }
         self.start(Kind::Stats(files));
+    }
+
+    /// Whether the batch that is running reads data of models.
+    pub(super) fn reading_stats(&self) -> bool {
+        self.work.as_ref().is_some_and(|w| matches!(w.kind, Kind::Stats(_)))
+    }
+
+    /// How far the running batch is.
+    pub(super) fn work_progress(&self) -> Option<(usize, usize)> {
+        self.work.as_ref().map(|w| (w.ok + w.failed, w.total))
     }
 
     pub(super) fn poll_work(&mut self) {
@@ -177,24 +191,12 @@ impl OpenLibraryApp {
             let mut folders = HashSet::new();
             for job in jobs.iter().filter(|j| j.out.is_file()) {
                 self.textures.remove(&job.key);
+                self.big = None;
                 folders.extend(job.out.parent().map(Path::to_path_buf));
             }
             self.rescan(folders);
         }
         self.notice = Some(text);
-    }
-
-    /// Reads these folders again, after the app wrote in them.
-    pub(super) fn rescan(&mut self, folders: impl IntoIterator<Item = PathBuf>) {
-        let cache = self.data_dir.as_ref().map(|d| d.join("library").join(crate::library::cache_name(&self.settings.library_paths(self.tab))));
-        let Some(index) = &mut self.index else { return };
-        for folder in folders {
-            index.rescan_folder(&folder);
-        }
-        if let Some(cache) = cache {
-            let _ = index.save(&cache); // only a cache
-        }
-        self.rebuild_tree();
     }
 
     /// The text of the running batch, for the status bar.
@@ -214,93 +216,21 @@ impl OpenLibraryApp {
         }
     }
 
-    fn selected_asset(&self) -> Option<Asset> {
-        let key = self.selected.as_deref()?;
-        self.shown.iter().find(|a| a.key() == key).cloned()
-    }
-
-    /// The buttons at the right of the search box.
-    pub(super) fn tools(&mut self, ui: &mut egui::Ui) {
-        if ui.button(self.t(Text::Catalog)).clicked() {
-            let data = self.data_dir.clone().unwrap_or_else(std::env::temp_dir);
-            let config = self.settings.data.get("catalog").and_then(Value::as_object);
-            let tools = (self.lang, self.wake.clone());
-            self.catalog = Some(CatalogWindow::new(config, self.index.as_ref(), &self.hidden, self.side.folder.as_deref(), &data, tools));
-        }
-        let selected = self.selected_asset();
-        ui.menu_button(self.t(Text::Previews), |ui| {
-            let one = selected.clone();
-            if ui.add_enabled(one.is_some(), egui::Button::new(self.t(Text::PreviewOfSelected))).clicked() {
-                self.ask_previews(&one.into_iter().collect::<Vec<_>>());
-                ui.close();
-            }
-            let without: Vec<Asset> = self.shown.iter().filter(|a| a.preview.is_none() && a.any_file().is_some()).cloned().collect();
-            let label = fill(self.t(Text::PreviewOfMissing), &[("count", &without.len())]);
-            if ui.add_enabled(!without.is_empty(), egui::Button::new(label)).clicked() {
-                self.ask_previews(&without);
-                ui.close();
-            }
-        });
-        self.relink_menu(ui, selected.clone());
-        ui.menu_button(self.t(Text::ModelData), |ui| {
-            if ui.add_enabled(selected.is_some(), egui::Button::new(self.t(Text::DataOfSelected))).clicked() {
-                self.read_stats(&selected.into_iter().collect::<Vec<_>>());
-                ui.close();
-            }
-            let label = fill(self.t(Text::DataOfAll), &[("count", &self.shown.len())]);
-            if ui.add_enabled(!self.shown.is_empty(), egui::Button::new(label)).clicked() {
-                let all = self.shown.clone();
-                self.read_stats(&all);
-                ui.close();
-            }
-        });
-    }
-
-    /// What is known of each file of the selected model.
-    pub(super) fn stats_panel(&mut self, ui: &mut egui::Ui, asset: &Asset) {
-        ui.label(egui::RichText::new(self.t(Text::ModelData).to_uppercase()).small().strong());
-        let mut unread = false;
-        for file in asset.all_files() {
-            match self.stats.get(file) {
-                None => unread = true,
-                Some(None) => {
-                    ui.label(self.t(Text::StatsUnreadable));
-                }
-                Some(Some(stats)) => {
-                    let (polys, verts) = (modelstats::thousands(stats.polys), modelstats::thousands(stats.verts));
-                    let values: [(&str, &dyn std::fmt::Display); 3] = [("polys", &polys), ("verts", &verts), ("objects", &stats.objects)];
-                    ui.label(fill(self.t(Text::StatsLine), &values));
-                    if stats.disp {
-                        ui.label(self.t(Text::StatsDisplacement));
-                    }
-                    if stats.anim {
-                        ui.label(fill(self.t(Text::StatsAnimation), &[("start", &stats.start), ("end", &stats.end)]));
-                    }
-                }
-            }
-        }
-        if unread && ui.add_enabled(self.work.is_none(), egui::Button::new(self.t(Text::StatsRead))).clicked() {
-            self.read_stats(std::slice::from_ref(asset));
-        }
-    }
-
     /// Opens the window of the missing files of a model.
     pub(super) fn open_missing(&mut self, asset: &Asset) {
         let files = asset.all_files().into_iter().map(Path::to_path_buf).collect();
-        let data = self.data_dir.clone().unwrap_or_else(std::env::temp_dir);
-        self.missing = Some(MissingWindow::new(&asset.name, (files, self.all_roots()), &data, self.lang, self.wake.clone()));
+        self.missing = Some(MissingWindow::new(&asset.name, (files, self.all_roots()), &self.data_dir, self.lang, self.wake.clone()));
     }
 
     /// The windows over the gallery: the missing files and the question before previews.
     pub(super) fn windows(&mut self, ctx: &egui::Context) {
         if let Some(window) = &mut self.missing {
             let answer = window.show(ctx);
-            for file in &answer.saved {
-                self.files.remove(file); // counted again
-                self.asked.remove(&file.with_extension("files"));
-            }
             if answer.close {
                 self.missing = None;
+            }
+            if !answer.saved.is_empty() {
+                self.forget_detail(&answer.saved); // looked at again
             }
         }
         let Some(jobs) = &self.preview_ask else { return };
@@ -314,10 +244,10 @@ impl OpenLibraryApp {
             ui.set_max_width(420.0);
             ui.label(text);
             ui.horizontal(|ui| {
-                if ui.button(egui::RichText::new(self.t(Text::Continue)).strong()).clicked() {
+                if crate::kit::button(ui, crate::kit::Kind::Primary, None, self.t(Text::Continue)).clicked() {
                     choice = Some(true);
                 }
-                if ui.button(self.t(Text::Cancel)).clicked() {
+                if crate::kit::button(ui, crate::kit::Kind::Action, None, self.t(Text::Cancel)).clicked() {
                     choice = Some(false);
                 }
             });
@@ -367,10 +297,10 @@ mod tests {
             serde_json::from_value(json!({"n": "Sofa", "v": {"vray": "S:\\Sofa_vray.max"}, "a": ["S:\\Sofa.max"], "p": "S:\\Sofa.PNG", "m": 0.0}))
                 .unwrap();
         asset.folder = PathBuf::from("S:\\");
-        let jobs = preview_jobs(std::slice::from_ref(&asset));
+        let jobs = preview_jobs(&[Arc::new(asset.clone())]);
         assert_eq!((jobs[0].file.clone(), jobs[0].out.clone(), jobs[0].replaces), ("S:\\Sofa_vray.max".into(), "S:\\Sofa.PNG".into(), true));
         asset.preview = Some(PathBuf::from("S:\\Sofa.webp"));
-        let jobs = preview_jobs(&[asset]);
+        let jobs = preview_jobs(&[Arc::new(asset)]);
         assert_eq!((jobs[0].out.clone(), jobs[0].replaces), ("S:\\Sofa.jpg".into(), false));
         let job = preview_job(&jobs, Some(&json!({"size": 256, "margin": 1.2})));
         assert_eq!(job.arguments, [256.0, 1.2, 20.0, 35.0]);

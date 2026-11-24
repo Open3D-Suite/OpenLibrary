@@ -105,17 +105,25 @@ fn installs(variables: impl Iterator<Item = (String, String)>, program_files: &[
     found
 }
 
+/// The supported 3ds Max installed, the newest first.
+fn supported_installs() -> Vec<(u32, PathBuf)> {
+    let program_files: Vec<PathBuf> = ["ProgramFiles", "ProgramW6432"].iter().filter_map(std::env::var_os).map(PathBuf::from).collect();
+    let variables = std::env::vars_os().filter_map(|(n, v)| Some((n.into_string().ok()?, v.into_string().ok()?)));
+    let mut found = installs(variables, &program_files);
+    found.retain(|(year, _)| *year >= crate::bridge_install::MIN_YEAR); // the oldest the app supports
+    found
+}
+
 /// `3dsmaxbatch.exe` of the newest 3ds Max installed.
 pub fn find() -> Option<PathBuf> {
-    let program_files: Vec<PathBuf> = ["ProgramFiles", "ProgramW6432"].iter().filter_map(std::env::var_os).map(PathBuf::from).collect();
-    // the oldest 3ds Max the app supports
-    let supported = |year: &u32| *year >= crate::bridge_install::MIN_YEAR;
-    let variables = std::env::vars_os().filter_map(|(n, v)| Some((n.into_string().ok()?, v.into_string().ok()?)));
-    installs(variables, &program_files)
-        .into_iter()
-        .filter(|(year, _)| supported(year))
-        .map(|(_, dir)| dir.join("3dsmaxbatch.exe"))
-        .find(|exe| exe.is_file())
+    supported_installs().into_iter().map(|(_, dir)| dir.join("3dsmaxbatch.exe")).find(|exe| exe.is_file())
+}
+
+/// `3dsmax.exe` of a year, or else of the newest one installed.
+pub fn find_max(year: Option<u32>) -> Option<PathBuf> {
+    let mut found = supported_installs();
+    found.sort_by_key(|(y, _)| Some(*y) != year); // stable: the newest first among the others
+    found.into_iter().map(|(_, dir)| dir.join("3dsmax.exe")).find(|exe| exe.is_file())
 }
 
 /// A path in a MAXScript text: forward slashes, and no quote (Windows allows none in a name).

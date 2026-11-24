@@ -51,7 +51,6 @@ texts! {
     ExternalFiles => "External files", "Archivos externos";
     FilesOk => "{count} files, all found", "{count} archivos, todos encontrados";
     FilesMissing => "{missing} of {count} files missing", "faltan {missing} de {count} archivos";
-    OpenFolder => "Open folder", "Abrir carpeta";
     CarriedOver => "Your settings from the previous OpenLibrary were brought over.",
         "Se han traído los ajustes de la OpenLibrary anterior.";
     BridgeMissing => "{maxes} has no bridge: without it, models cannot be dragged from OpenLibrary into the scene.",
@@ -65,10 +64,8 @@ texts! {
     DontAskAgain => "Do not ask again", "No volver a preguntar";
     BridgeDone => "Bridge ready in {maxes}. If 3ds Max is open, restart it.", "Puente listo en {maxes}. Si 3ds Max está abierto, reinícialo.";
     BridgeError => "The bridge could not be installed in {max}: {error}", "No se pudo instalar el puente en {max}: {error}";
-    Connected => "Connected to {max} · {engine}", "Conectado a {max} · {engine}";
     NoMax => "No 3ds Max with the bridge is open.", "No hay ningún 3ds Max abierto con el puente.";
     DropOnMax => "Drop the model on the window of a 3ds Max with the bridge.", "Suelta el modelo sobre la ventana de un 3ds Max con el puente.";
-    DragHint => "Drag to 3ds Max · Shift: as proxy · Ctrl: in its original place", "Arrastra a 3ds Max · Shift: como proxy · Ctrl: en su posición original";
     Placing => "{name}: in 3ds Max, click to place · the wheel turns 90° · right button or Esc ends",
         "{name}: en 3ds Max, clic para colocar · la rueda gira 90° · botón derecho o Esc termina";
     Merged => "{name}: {count} objects in {max}", "{name}: {count} objetos en {max}";
@@ -106,10 +103,10 @@ texts! {
         "Hechos: {ok} · no se pudieron hacer: {failed}";
     BatchFailed => "The 3ds Max in the background did not work ({error}).",
         "El 3ds Max en segundo plano no funcionó ({error}).";
-    Previews => "Previews",
-        "Previews";
-    PreviewOfSelected => "Of the selected model, in the background…",
-        "Del modelo seleccionado, en segundo plano…";
+    Previews => "Preview",
+        "Preview";
+    PreviewOfSelected => "Of the {count} selected, in the background…",
+        "De los {count} seleccionados, en segundo plano…";
     PreviewOfMissing => "Of all those without one here ({count}), in the background…",
         "De todos los que no tienen aquí ({count}), en segundo plano…";
     PreviewAsk => "A 3ds Max in the background is going to make {count} previews. It does not touch the scene you have open, and you can go on working. Each image is saved beside its model, in the library.",
@@ -120,12 +117,6 @@ texts! {
         "Hacer su preview en segundo plano…";
     MenuData => "Read its faces and vertices",
         "Leer sus caras y vértices";
-    ModelData => "Model data",
-        "Datos del modelo";
-    DataOfSelected => "Read those of the selected model",
-        "Leer los del modelo seleccionado";
-    DataOfAll => "Read those of all the models here ({count})",
-        "Leer los de todos los modelos de aquí ({count})";
     StatsAllRead => "The data of these models is already read.",
         "Los datos de estos modelos ya están leídos.";
     StatsRead => "Read faces and vertices",
@@ -314,12 +305,8 @@ texts! {
         "Usar el de la escena";
     MakeNew => "Bring in a new one",
         "Meter uno nuevo";
-    OptEngine => "Renderer",
-        "Motor";
     EngineScene => "The scene's",
         "El de la escena";
-    OptResolution => "Resolution",
-        "Resolución";
     ResHighest => "Highest",
         "La más alta";
     ResLowest => "Lowest",
@@ -332,8 +319,6 @@ texts! {
         "Solo bibliotecas .mat";
     OptOnlySized => "Only with a known size",
         "Solo con medida conocida";
-    OptRecent => "Newest first",
-        "Lo más nuevo primero";
     OptRole => "Load as",
         "Cargar como";
     RoleAuto => "By its name",
@@ -352,8 +337,6 @@ texts! {
         "Día";
     LightNight => "Night",
         "Noche";
-    OptDepth => "Depth",
-        "Fondo";
     DepthAuto => "Automatic",
         "Automático";
     HintMaterials => "Drag a material onto an object in 3ds Max to put it there, with the mapping and the size it has here, or onto the Slate editor. Select several (Ctrl, Shift) to take them to Slate at once.",
@@ -447,8 +430,6 @@ texts! {
         "Añadir a favoritos";
     FavoriteRemove => "Remove from favourites",
         "Quitar de favoritos";
-    FavoriteToggle => "Add to or remove from favourites",
-        "Añadir o quitar de favoritos";
     FolderColor => "Colour",
         "Color";
     FolderNoColor => "No colour",
@@ -473,14 +454,14 @@ texts! {
         "Preview guardada.";
     PreviewNotMade => "The preview could not be made (see the MAXScript Listener).",
         "No se pudo hacer la preview (mira el MAXScript Listener).";
-    Relink => "Lost paths",
-        "Rutas perdidas";
-    RelinkScene => "Find those of the scene open in 3ds Max",
-        "Buscar las de la escena abierta en 3ds Max";
-    RelinkSelected => "Find those inside the .max of the selected model…",
-        "Buscar las de dentro del .max seleccionado…";
-    RelinkAll => "Find those inside the .max of all the models here ({count})…",
-        "Buscar las de dentro de los .max de todos los modelos de aquí ({count})…";
+    Relink => "Relink",
+        "Re-enlazar";
+    RelinkScene => "Lost files of the scene open in 3ds Max",
+        "Archivos perdidos de la escena abierta en 3ds Max";
+    RelinkSelected => "Inside the .max of those selected ({count} files)…",
+        "Dentro de los .max seleccionados ({count} archivos)…";
+    RelinkAll => "Inside the .max of all those here ({count} files)…",
+        "Dentro de los .max de todos los de aquí ({count} archivos)…";
     RelinkingScene => "Looking for the lost files of the scene (large folders take a while)…",
         "Buscando los archivos perdidos de la escena (en carpetas grandes tarda)…";
     RelinkAsk => "The paths inside {count} .max files of the library are going to be written again. Go on?",
@@ -671,6 +652,238 @@ texts! {
         "El idioma de todas las aplicaciones Open3D.";
     LanguageWindows => "That of Windows",
         "El de Windows";
+    RefreshHint => "Look for changes in the folders (right click: read everything again)",
+        "Buscar cambios en las carpetas (clic derecho: volver a leerlo todo)";
+    RefreshQuick => "Look for changes",
+        "Buscar cambios";
+    RefreshAll => "Read everything again",
+        "Volver a leerlo todo";
+    ThemeLight => "Light mode",
+        "Modo claro";
+    ThemeDark => "Dark mode",
+        "Modo oscuro";
+    InfoHint => "Show or hide the information of the selected card",
+        "Mostrar u ocultar la información de lo seleccionado";
+    PinHint => "Always on top of the other windows",
+        "Siempre por encima de las demás ventanas";
+    ThumbSize => "Size of the thumbnails",
+        "Tamaño de las miniaturas";
+    MaxNone => "No 3ds Max",
+        "Sin 3ds Max";
+    MaxNoneHint => "No 3ds Max with the bridge is open. It connects by itself when one opens.",
+        "No hay ningún 3ds Max abierto con el puente. Se conecta solo al abrir uno.";
+    MaxHint => "The models go here. With several open, to the one in front or the one under the mouse.",
+        "Los modelos van aquí. Con varios abiertos, al que esté delante o al que tenga el ratón.";
+    Folders => "Folders",
+        "Carpetas";
+    Subfolders => "Include subfolders",
+        "Incluir subcarpetas";
+    ResultsOf => "Results of «{text}»",
+        "Resultados de «{text}»";
+    CatalogTip => "Open a download (zip, rar, 7z or a folder), sort its files and save it in the library",
+        "Abrir una descarga (zip, rar, 7z o una carpeta), repartir sus archivos y guardarla en la biblioteca";
+    PreviewTip => "Make previews: of the selected model with what is open in 3ds Max, or of many in the background",
+        "Generar previews: del modelo seleccionado con lo que tengas en 3ds Max, o de muchos en segundo plano";
+    RelinkTip => "Find lost textures and files: in the scene, or inside the .max of the library",
+        "Buscar texturas y archivos perdidos: en la escena, o dentro de los .max de la biblioteca";
+    FilterAll => "All",
+        "Todos";
+    FilterAllTip => "Every renderer",
+        "Todos los motores";
+    FilterEngineTip => "Only those with a version of this renderer",
+        "Solo los que tienen versión de este motor";
+    FilterScene => "Scene's renderer",
+        "Motor de la escena";
+    FilterSceneTip => "Only those with a version of the renderer of the connected 3ds Max",
+        "Solo los que tienen versión del motor del 3ds Max conectado";
+    FilterWarn => "With warnings",
+        "Con avisos";
+    FilterWarnTip => "Only those with files not found (of the ones looked at so far)",
+        "Solo los que tienen archivos sin encontrar (de los que ya se han mirado)";
+    FilterNoPreview => "Without preview",
+        "Sin preview";
+    FilterNoPreviewTip => "Only those without an image of their own",
+        "Solo los que no tienen imagen propia";
+    SortName => "Name A–Z",
+        "Nombre A–Z";
+    SortRecent => "Newest",
+        "Más recientes";
+    ShowNames => "Names",
+        "Nombres";
+    ShowNamesTip => "Cards with the name below, or only the images",
+        "Tarjetas con el nombre debajo, o solo las imágenes";
+    NothingMatches => "Nothing matches «{text}».",
+        "Nada coincide con «{text}».";
+    NothingPasses => "Nothing here passes the filters.",
+        "Nada de aquí pasa los filtros.";
+    NoFavorites => "No favourites yet: mark them with the heart of each card.",
+        "Aún no hay favoritos: márcalos con el corazón de cada tarjeta.";
+    NoMaxFile => "no .max file",
+        "sin archivo .max";
+    TipMissing => "Files not found: {count}",
+        "Archivos sin encontrar: {count}";
+    OpenNewMax => "Open in a new 3ds Max",
+        "Abrir en un 3ds Max nuevo";
+    OpenHere => "Open in the connected 3ds Max",
+        "Abrir en el 3ds Max conectado";
+    CopyPath => "Copy its path",
+        "Copiar la ruta";
+    MenuRelink => "Find the lost paths inside its .max…",
+        "Re-enlazar las rutas de dentro del .max…";
+    SelectOne => "Select a model to see its information.",
+        "Selecciona un modelo para ver su información.";
+    SelectedCount => "{count} models selected",
+        "{count} modelos seleccionados";
+    LookHint => "See it large (space bar)",
+        "Verla en grande (barra espaciadora)";
+    LookKeys => "arrows or wheel: next · space, Esc or click: close",
+        "flechas o rueda: siguiente · espacio, Esc o clic: cerrar";
+    OpenInMax => "Open in 3ds Max",
+        "Abrir en 3ds Max";
+    OpenInMaxTip => "Opens the .max itself in a new 3ds Max, to edit it",
+        "Abre el propio .max en un 3ds Max nuevo, para editarlo";
+    Place => "Place",
+        "Colocar";
+    PlaceTip => "Merge and place: it follows the mouse until a click",
+        "Merge and place: sigue al ratón hasta que hagas clic";
+    Proxy => "Proxy",
+        "Proxy";
+    ProxyTip => "Merge as a Corona or V-Ray proxy",
+        "Merge como proxy de Corona o V-Ray";
+    Original => "Original",
+        "Original";
+    OriginalTip => "Merge in its original place",
+        "Merge en su posición original";
+    HintNoMax => "Open a 3ds Max with the bridge to bring it into the scene.",
+        "Abre un 3ds Max con el puente para traerlo a la escena.";
+    HintProxyEngine => "Proxies need Corona or V-Ray as the renderer of the scene.",
+        "Los proxies necesitan Corona o V-Ray como motor de la escena.";
+    SceneEngine => "the scene's",
+        "el de la escena";
+    Unreachable => "It cannot be reached now.",
+        "Ahora no se puede acceder.";
+    StatsUnread => "Faces and vertices not read yet.",
+        "Caras y vértices sin leer.";
+    StatsReading => "Reading faces and vertices…",
+        "Leyendo caras y vértices…";
+    StatsReadAgain => "Read again",
+        "Volver a leer";
+    StatsTip => "Opens its .max in a 3ds Max in the background to count",
+        "Abre sus .max en un 3ds Max en segundo plano para contarlos";
+    StatsPlain => "Without displacement or animation",
+        "Sin desplazamiento ni animación";
+    Checking => "Looking at them…",
+        "Comprobando…";
+    FilesNone => "It has no external files.",
+        "No tiene archivos externos.";
+    FilesNearby => "{count} are in the model's folder: they are relinked by themselves on import.",
+        "{count} están en la carpeta del modelo: se re-enlazan solos al importar.";
+    FilesNotFound => "Not found ({count}):",
+        "Sin encontrar ({count}):";
+    FilesMore => "… and {count} more",
+        "… y {count} más";
+    MissingTip => "Relink them, or remove them from the .max",
+        "Re-enlazarlos o quitarlos del .max";
+    ProxyReady => "Made already: it comes in at once.",
+        "Ya está hecho: entra al momento.";
+    ProxyNotYet => "Not made yet: it is made the first time.",
+        "Aún no está hecho: se crea la primera vez.";
+    PreviewNone => "It has no preview: make it with the Previews button.",
+        "No tiene preview: hazla con el botón Previews.";
+    InstanceProxy => "Instance of the proxy of the scene",
+        "Instancia del proxy que ya hay";
+    InstanceModel => "Instance of the geometry of the scene",
+        "Instancia de la geometría que ya hay";
+    Again => "again",
+        "de nuevo";
+    HereAlready => "It is in the scene already.",
+        "Ya está en la escena.";
+    HereAsking => "Looking whether the scene has it…",
+        "Mirando si la escena ya lo tiene…";
+    HereNot => "How does it come in?",
+        "¿Cómo entra?";
+    ExistsAsk => "{name} is in the scene already. Make an instance of it, or bring it in again (3ds Max asks what to do with the names and the materials)?",
+        "{name} ya está en la escena. ¿Haces una instancia o entra de nuevo (3ds Max pregunta qué hacer con los nombres y los materiales)?";
+    BringAgain => "Bring it in again",
+        "Que entre de nuevo";
+    VersionAsk => "The scene uses {engine} and {name} has no such version. Which one comes in?",
+        "La escena usa {engine} y {name} no tiene esa versión. ¿Cuál entra?";
+    Opening => "3ds Max is opening it…",
+        "3ds Max lo está abriendo…";
+    Opened => "{name} opened in 3ds Max.",
+        "{name} abierto en 3ds Max.";
+    OpeningNew => "Opening {name} in a new 3ds Max…",
+        "Abriendo {name} en un 3ds Max nuevo…";
+    HideNames => "Hide folders by name…",
+        "Ocultar carpetas por nombre…";
+    HideNamesAsk => "Names of folders to hide in every tab, separated by commas (* stands for anything):",
+        "Nombres de carpetas que ocultar en todas las pestañas, separados por comas (* vale por cualquier cosa):";
+    FoldersHidden => "Hidden folders ({count})",
+        "Carpetas ocultas ({count})";
+    FolderShowName => "Show again all those called {name}",
+        "Volver a mostrar las que se llaman {name}";
+    FolderShowAgain => "Show again {name}",
+        "Volver a mostrar {name}";
+    FolderShowAll => "Show them all",
+        "Mostrar todas";
+    FolderOpenInside => "Open everything inside",
+        "Desplegar todo lo de dentro";
+    ImpMissingEngine => "Without a version of the scene's renderer",
+        "Sin versión del motor de la escena";
+    MissingAsk => "Ask which one comes in",
+        "Preguntar cuál usar";
+    MissingFallback => "Use the one there is",
+        "Usar la que haya sin preguntar";
+    SelectedAny => "{count} selected",
+        "{count} seleccionados";
+    Apply => "Apply",
+        "Aplicar";
+    QuickMaterial => "Quick material",
+        "Material rápido";
+    MakeWindow => "Make the window",
+        "Crear ventana";
+    ToSlate => "To Slate",
+        "Al Slate";
+    ChipBalls => "Balls",
+        "Bolas";
+    ChipSized => "With a size",
+        "Con medidas";
+    ChipDisplacement => "Displacement",
+        "Desplazamiento";
+    TipEngine => "The renderer the material or map is made with in 3ds Max",
+        "Con qué motor se crea el material o el mapa en 3ds Max";
+    TipResolution => "Which resolution is loaded when there are several (if there is not that one, the nearest)",
+        "Qué resolución se carga cuando hay varias (si no hay esa, la más cercana)";
+    TipDepth => "How deep the room is, against the width of the window. Automatic: that of the sample scenes.",
+        "Profundidad de la habitación respecto al ancho de la ventana. Automático: la de las escenas de ejemplo.";
+    TipMapping => "The object's UV: the mapping is not touched. Real World: X × Y with a real-size UVW Map. UVW Map: a box of X × Y × Z. Triplanar: without UV, tiles of X.",
+        "UV del objeto: no toca el mapeado. Real World: X × Y con un UVW Map a tamaño real. UVW Map: caja de X × Y × Z. Triplanar: sin UV, con baldosas de X.";
+    TipSizeSelect => "Select one material to write its size and mapping.",
+        "Selecciona un material para escribir sus medidas y su mapeado.";
+    CapLibrary => ".mat library",
+        "Biblioteca .mat";
+    CapTexture => "Texture",
+        "Textura";
+    CapWindow => "Window",
+        "Ventana";
+    CapSize => "Real size",
+        "Tamaño real";
+    CapResolutions => "Resolutions",
+        "Resoluciones";
+    RoomPlane => "Making the window makes a plane of that size; on your own planes or boxes the shader adapts itself.",
+        "Al crear la ventana se hace un plano de ese tamaño; en tus planos o cajas el shader se adapta solo.";
+    ShapeSquare => "Square: triplanar works",
+        "Cuadrada: vale el triplanar";
+    ShapeWide => "Wider than tall",
+        "Más ancha que alta";
+    ShapeTall => "Taller than wide",
+        "Más alta que ancha";
+    CopyMaps => "Copy the list of maps",
+        "Copiar la lista de mapas";
+    CatalogDropHere => "Drag files here",
+        "Arrastra aquí los archivos";
+    CatalogOpenFile => "Open it, or see it in its folder",
+        "Abrirlo, o verlo en su carpeta";
     SettingsError => "The settings could not be saved: {error}", "No se pudieron guardar los ajustes: {error}";
 }
 

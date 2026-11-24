@@ -39,8 +39,13 @@ Update it in the same commit as a change that makes it old.
 
 - `src/main.rs`: reads the arguments: `--version`, or the program itself.
 - `src/lib.rs`: the name, the version and `run`, which opens the window.
-- `src/app.rs`: the window (eframe/egui): tabs and search, folder tree, gallery, selected model; it only draws
-  what the other modules give it. Scans, thumbnails and `.max` reading run on threads of their own.
+- `src/app.rs`: the window (eframe/egui): what it holds, and what its threads send. **The window's thread never asks the
+  disk about the library** (it may be on a slow server): cards use `peek` of the caches, and `Job` reads on threads.
+  Each tab is kept as it was (`kept_models`, `kept_surfaces`).
+- `src/app/frame.rs` (header, status bar), `src/app/gallery.rs` (title, filters, cards, their menu),
+  `src/app/inspector.rs` (the panel of the selected model), `src/app/merge.rs` (the menu after a drop, the questions,
+  models one after another).
+- `src/kit.rs`: the look (colours of both modes, fonts of Windows, icons) and the widgets: `button`, `chip`, `tab`...
 - `src/app/work.rs`: the window's batches (previews, model data) and what opens the two windows below.
 - `src/app/live.rs`: what is asked of an open 3ds Max: the preview of its selection, lost paths of the scene or of
   `.max` files.
@@ -48,7 +53,7 @@ Update it in the same commit as a change that makes it old.
   image of a card, large.
 - `src/ui_catalog.rs`, `src/ui_missing.rs`: the windows to catalogue a download and for the missing files.
 - `src/max_session.rs`: the window's side of 3ds Max: `MaxSession` (discovery every 3 s, the bridge prompt,
-  `install`, `send_merge` on a thread) and `merge_request`, which builds a merge from an asset and the settings.
+  `install`, `request` on a thread, the 3ds Max in front) and `prepare`, which builds a merge (it reads the disk).
 - `src/thumbs.rs`: `ThumbLoader`, thumbnails on threads, last asked first, cached as JPEG in `thumbs` of the
   data folder (`cache_file`); a `.max` without preview gives its viewport capture.
 - `src/platform.rs`: every call to Windows but one.
@@ -80,7 +85,7 @@ Update it in the same commit as a change that makes it old.
   exe and is never installed in 3ds Max.
 - `src/modelstats.rs`: faces, vertices, displacement and animation of a model, kept in `model_stats.json`.
 - `src/missing.rs`: the external files a `.max` does not find (`externals`), and the job that changes or removes
-  their paths without opening it.
+  their paths without opening it. `CheckCache` keeps what was found in `external_files.json`.
 - `src/archives.rs`: opens a download with the 7-Zip, NanaZip or UnRAR installed, or the `tar` of Windows; its parts
   (`volumes`). `src/catalog.rs`: the proposed share (`guess`), the names and the copy (`Plan`).
 - `src/surfaces.rs`: materials and textures: `parse_name` (channel, resolution), `real_size`, `build_materials`,

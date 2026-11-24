@@ -114,7 +114,7 @@ fn folders(ui: &mut egui::Ui, lang: Language, map: &mut Map<String, Value>, key:
     if let Some(i) = remove {
         list.remove(i);
     }
-    if ui.button(Text::SetAddFolder.get(lang)).clicked()
+    if crate::kit::button(ui, crate::kit::Kind::Action, None, Text::SetAddFolder.get(lang)).clicked()
         && let Some(path) = rfd::FileDialog::new().pick_folder()
     {
         let path = path.display().to_string();
@@ -185,7 +185,7 @@ impl SettingsWindow {
                 self.tab = b;
             }
             left.horizontal(|ui| {
-                if ui.button(Text::SetAddTab.get(lang)).clicked() {
+                if crate::kit::button(ui, crate::kit::Kind::Action, None, Text::SetAddTab.get(lang)).clicked() {
                     let mut tab = Map::new();
                     tab.insert("name".into(), Text::SetNewTab.get(lang).into());
                     tab.insert("kind".into(), "models".into());
@@ -241,6 +241,7 @@ impl SettingsWindow {
         choice(ui, t(Text::ImpObjects), map, "object_dups", &objects);
         let materials = [("scene", t(Text::MatScene)), ("file", t(Text::MatFile)), ("rename", t(Text::MatRename)), ("ask", t(Text::DupAsk))];
         choice(ui, t(Text::ImpMaterials), map, "material_dups", &materials);
+        choice(ui, t(Text::ImpMissingEngine), map, "missing_engine", &[("ask", t(Text::MissingAsk)), ("fallback", t(Text::MissingFallback))]);
         flag(ui, t(Text::ImpLights), map, "import_lights", false);
         flag(ui, t(Text::ImpCameras), map, "import_cameras", false);
         flag(ui, t(Text::ImpSurface), map, "place_on_surface", true);
@@ -254,7 +255,7 @@ impl SettingsWindow {
         if text_of(map, "proxy_location") == "custom" {
             ui.horizontal(|ui| {
                 ui.label(text_of(map, "proxy_custom_dir"));
-                if ui.button(t(Text::Choose)).clicked()
+                if crate::kit::button(ui, crate::kit::Kind::Action, None, t(Text::Choose)).clicked()
                     && let Some(path) = rfd::FileDialog::new().pick_folder()
                 {
                     map.insert("proxy_custom_dir".into(), path.display().to_string().into());
@@ -292,10 +293,10 @@ impl SettingsWindow {
                     (true, false) => (Text::BridgeInstalled, Text::InstallAgain),
                 };
                 ui.label(state.get(self.lang));
-                if ui.button(button.get(self.lang)).clicked() {
+                if crate::kit::button(ui, crate::kit::Kind::Action, None, button.get(self.lang)).clicked() {
                     action = Some((i, true));
                 }
-                if target.installed() && ui.button(Text::BridgeRemove.get(self.lang)).clicked() {
+                if target.installed() && crate::kit::button(ui, crate::kit::Kind::Action, None, Text::BridgeRemove.get(self.lang)).clicked() {
                     action = Some((i, false));
                 }
             });
@@ -312,14 +313,14 @@ impl SettingsWindow {
             ui.separator();
             ui.label(fill(self.t(Text::BridgeAskRemove), &[("max", &target.label())]));
             ui.horizontal(|ui| {
-                if ui.button(self.t(Text::BridgeRemove)).clicked() {
+                if crate::kit::button(ui, crate::kit::Kind::Action, None, self.t(Text::BridgeRemove)).clicked() {
                     self.status = match target.uninstall() {
                         Ok(()) => fill(self.t(Text::BridgeRemoved), &[("max", &target.label())]),
                         Err(error) => fill(self.t(Text::BridgeError), &[("max", &target.label()), ("error", &error)]),
                     };
                     self.remove = None;
                 }
-                if ui.button(self.t(Text::Cancel)).clicked() {
+                if crate::kit::button(ui, crate::kit::Kind::Action, None, self.t(Text::Cancel)).clicked() {
                     self.remove = None;
                 }
             });
@@ -335,7 +336,7 @@ impl SettingsWindow {
         ui.add_enabled_ui(self.shared, |ui| {
             ui.horizontal(|ui| {
                 ui.add(egui::TextEdit::singleline(&mut self.workspace).desired_width(420.0));
-                if ui.button(Text::Choose.get(self.lang)).clicked()
+                if crate::kit::button(ui, crate::kit::Kind::Action, None, Text::Choose.get(self.lang)).clicked()
                     && let Some(path) = rfd::FileDialog::new().pick_folder()
                 {
                     self.workspace = workspace::workspace_dir(&path).display().to_string();
@@ -406,7 +407,7 @@ impl SettingsWindow {
             ui.label(self.t(Text::WsAskTheirs));
         }
         ui.horizontal(|ui| {
-            if ui.button(egui::RichText::new(self.t(Text::Accept)).strong()).clicked() && self.accept(settings) {
+            if crate::kit::button(ui, crate::kit::Kind::Primary, None, self.t(Text::Accept)).clicked() && self.accept(settings) {
                 (answer.close, answer.saved) = (true, true);
                 if self.language != self.old_language
                     && let Some(dir) = open3d_settings::settings_dir()
@@ -420,7 +421,7 @@ impl SettingsWindow {
                     }
                 }
             }
-            if ui.button(self.t(Text::Cancel)).clicked() {
+            if crate::kit::button(ui, crate::kit::Kind::Action, None, self.t(Text::Cancel)).clicked() {
                 if std::mem::take(&mut self.ask_theirs) {
                     return;
                 }

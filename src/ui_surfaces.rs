@@ -3,8 +3,10 @@
 //! known of the selected one. Cards are dragged onto 3ds Max.
 
 use crate::favorites::{self, TabView};
+use crate::foldertree::TreeAction;
 use crate::foldertree::{self, SideTree};
 use crate::interiors::{self, Light, Room};
+use crate::kit::{self, Kind};
 use crate::library::{hidden_folders, norm_key};
 use crate::max_session::{MaxReply, MaxSession};
 use crate::maxlink::{MaxError, MaxInfo, PROTOCOL};
@@ -21,10 +23,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-const ACCENT: Color32 = Color32::from_rgb(0xF0, 0xA9, 0x3B);
 const DARK: Color32 = Color32::from_rgb(20, 24, 34);
-const FOOTER: f32 = 30.0;
-const GAP: f32 = 8.0;
+const FOOTER: f32 = 44.0;
+/// How many thumbnails become textures in one frame.
+const TEXTURES_PER_FRAME: usize = 16;
 
 /// A card of these tabs.
 #[derive(Clone)]
@@ -94,16 +96,21 @@ impl Surface {
             _ => self.thumb(light),
         }
     }
+}
 
-    fn matches(&self, words: &[String]) -> bool {
-        let hay = format!("{} {}", self.name(), self.folder().display()).to_lowercase();
-        words.iter().all(|w| hay.contains(w.as_str()))
-    }
+/// A card, and what is asked of it at every search, worked out once.
+pub struct Card {
+    item: Surface,
+    key: String,
+    folder: String,
+    favorite: String,
+    /// Where the words of a search are looked for.
+    hay: String,
 }
 
 /// What a scan thread has read.
 struct View {
-    items: Vec<Surface>,
+    items: Vec<Arc<Card>>,
     folders: Vec<PathBuf>,
     pixels: HashMap<String, (u32, u32)>,
 }
@@ -141,6 +148,8 @@ pub struct Tools<'a> {
     pub settings: &'a mut Settings,
     pub max: &'a mut MaxSession,
     pub notice: &'a mut Option<String>,
+    /// The panel of the selected card is shown.
+    pub info: bool,
 }
 
 pub struct SurfacePanel {
@@ -148,6 +157,7 @@ pub struct SurfacePanel {
     lang: Language,
     wake: Wake,
     roots: Vec<PathBuf>,
+    measures: Vec<PathBuf>,
     task: Task<Event>,
     scanning: bool,
     seen: usize,
@@ -157,7 +167,8 @@ pub struct SurfacePanel {
     tab: TabView,
     favorite_count: usize,
     search: String,
-    shown: Vec<Surface>,
+    shown: Vec<Arc<Card>>,
+    total: usize,
     dirty: bool,
     only_libraries: bool,
     only_sized: bool,
@@ -165,9 +176,12 @@ pub struct SurfacePanel {
     selected: HashSet<String>,
     anchor: usize,
     textures: HashMap<String, Option<TextureHandle>>,
+    loaded: Vec<crate::thumbs::Loaded>,
     loader: ThumbLoader,
     dragging: bool,
     look: bool,
+    reveal: Option<usize>,
+    tree_action: Option<TreeAction>,
     size: [f64; 3],
     sent: Vec<Sent>,
     ask: Option<Ask>,
@@ -175,7 +189,7 @@ pub struct SurfacePanel {
 
 fn read_view(kind: &str, index: &SurfaceIndex) -> View {
     let mut pixels = HashMap::new();
-    let items = match kind {
+    let items: Vec<Surface> = match kind {
         "materials" => {
             let list = index.materials();
             pixels.extend(list.iter().filter_map(|m| Some((m.key(), index.dims_of(m)?))));
@@ -184,7 +198,11 @@ fn read_view(kind: &str, index: &SurfaceIndex) -> View {
         "textures" => surfaces::build_textures(&index.listing).into_iter().map(|t| Surface::Texture(Arc::new(t))).collect(),
         _ => interiors::build_interiors(&index.listing, &index.roots).into_iter().map(|r| Surface::Room(Arc::new(r))).collect(),
     };
-    View { items, folders: index.folders(), pixels }
+    let card = |item: Surface| {
+        let hay = format!("{} {}", item.name(), item.folder().display()).to_lowercase();
+        Arc::new(Card { key: item.key(), folder: norm_key(item.folder()), favorite: item.favorite_key(&index.roots), hay, item })
+    };
+    View { items: items.into_iter().map(card).collect(), folders: index.folders(), pixels }
 }
 
 /// "30×60 cm", "2.5×2.5 m".
@@ -208,34 +226,40 @@ fn ratio_text(aspect: Aspect, ratio: f64) -> String {
     }
 }
 
-impl SurfacePanel {
-    pub fn new(kind: &str, tab: TabView, (roots, measures): (&[PathBuf], &[PathBuf]), data_dir: &Path, lang: Language, wake: Wake) -> Self {
-        let cache = data_dir.join("library").join(format!("surf_{}", crate::library::cache_name(roots)));
-        let mut index = SurfaceIndex::new(roots, measures);
-        let kind_name = kind.to_string();
-        let task = Task::start(wake.clone(), move |link| {
-            if index.load(&cache) {
-                link.send(Event::View(read_view(&kind_name, &index)));
-            }
-            if index.scan(&|| link.cancelled(), &mut |n| link.send(Event::Seen(n))) {
-                link.send(Event::View(read_view(&kind_name, &index)));
-                let _ = index.save(&cache); // only a cache: without it the next start reads the folders again
-                let materials = if kind_name == "materials" { index.materials() } else { Vec::new() };
-                if index.fill_dims(&materials, &|| link.cancelled()) {
-                    let _ = index.save(&cache);
-                    if !link.cancelled() {
-                        link.send(Event::View(read_view(&kind_name, &index)));
-                    }
+/// Reads the folders on a thread: those the cache knows and did not change are not listed again when `incremental`.
+fn read(kind: &str, (roots, measures): (&[PathBuf], &[PathBuf]), data_dir: &Path, incremental: bool, wake: Wake) -> Task<Event> {
+    let cache = data_dir.join("library").join(format!("surf_{}", crate::library::cache_name(roots)));
+    let mut index = SurfaceIndex::new(roots, measures);
+    let kind = kind.to_string();
+    Task::start(wake, move |link| {
+        if incremental && index.load(&cache) {
+            link.send(Event::View(read_view(&kind, &index)));
+        }
+        if index.scan(&|| link.cancelled(), &mut |n| link.send(Event::Seen(n))) {
+            link.send(Event::View(read_view(&kind, &index)));
+            let _ = index.save(&cache); // only a cache: without it the next start reads the folders again
+            let materials = if kind == "materials" { index.materials() } else { Vec::new() };
+            if index.fill_dims(&materials, &|| link.cancelled()) {
+                let _ = index.save(&cache);
+                if !link.cancelled() {
+                    link.send(Event::View(read_view(&kind, &index)));
                 }
             }
-            link.send(Event::Done);
-        });
+        }
+        link.send(Event::Done);
+    })
+}
+
+impl SurfacePanel {
+    pub fn new(kind: &str, tab: TabView, (roots, measures): (&[PathBuf], &[PathBuf]), data_dir: &Path, lang: Language, wake: Wake) -> Self {
+        let task = read(kind, (roots, measures), data_dir, true, wake.clone());
         Self {
             kind: kind.to_string(),
             lang,
             loader: ThumbLoader::new(data_dir.join("thumbs"), 4, wake.clone()),
             wake,
             roots: roots.to_vec(),
+            measures: measures.to_vec(),
             task,
             scanning: true,
             seen: 0,
@@ -246,6 +270,10 @@ impl SurfacePanel {
             favorite_count: 0,
             search: String::new(),
             shown: Vec::new(),
+            total: 0,
+            loaded: Vec::new(),
+            reveal: None,
+            tree_action: None,
             dirty: true,
             only_libraries: false,
             only_sized: false,
@@ -267,10 +295,22 @@ impl SurfacePanel {
 
     /// For the status bar.
     pub fn status(&self) -> String {
-        if self.scanning && self.view.is_none() {
-            return fill(self.t(Text::SurfacesReading), &[("count", &self.seen)]);
+        match (self.scanning, &self.view) {
+            (true, None) => fill(self.t(Text::SurfacesReading), &[("count", &self.seen)]),
+            (true, _) => self.t(Text::Scanning).to_string(),
+            _ => String::new(),
         }
-        fill(self.t(Text::SurfacesShown), &[("count", &self.shown.len())])
+    }
+
+    /// Looks for changes in the folders, or reads them all again.
+    pub fn rescan(&mut self, incremental: bool, data_dir: &Path) {
+        self.task = read(&self.kind, (&self.roots, &self.measures), data_dir, incremental, self.wake.clone());
+        (self.scanning, self.seen) = (true, 0);
+    }
+
+    /// What was chosen in the menu of the folders, for the window.
+    pub fn take_action(&mut self) -> Option<TreeAction> {
+        self.tree_action.take()
     }
 
     fn poll(&mut self, ctx: &egui::Context, settings: &Settings) {
@@ -287,12 +327,17 @@ impl SurfacePanel {
         if self.textures.len() > crate::thumbs::IN_MEMORY {
             self.textures.clear(); // those on screen come back from the cache
         }
-        for loaded in self.loader.poll() {
+        self.loaded.extend(self.loader.poll());
+        let now = self.loaded.len().min(TEXTURES_PER_FRAME);
+        for loaded in self.loaded.drain(..now) {
             let texture = loaded.image.map(|img| {
                 let size = [img.width() as usize, img.height() as usize];
                 ctx.load_texture(&loaded.key, egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw()), TextureOptions::LINEAR)
             });
             self.textures.insert(loaded.key, texture);
+        }
+        if !self.loaded.is_empty() {
+            ctx.request_repaint();
         }
     }
 
@@ -303,37 +348,54 @@ impl SurfacePanel {
         let Some(view) = &self.view else { return };
         let words: Vec<String> = self.search.to_lowercase().split_whitespace().map(str::to_string).collect();
         let base = self.side.folder.as_deref().map(norm_key);
-        let in_folder = |item: &Surface| {
-            let key = norm_key(item.folder());
-            let inside = base.as_ref().is_none_or(|b| key == *b || key.starts_with(&format!("{}\\", b.trim_end_matches('\\'))));
-            inside && !self.hidden.contains(&key)
+        let prefix = base.as_ref().map(|b| format!("{}\\", b.trim_end_matches('\\')));
+        let in_folder = |card: &Card| {
+            let inside = match (&base, &prefix) {
+                (Some(base), Some(prefix)) => card.folder == *base || card.folder.starts_with(prefix),
+                _ => true,
+            };
+            inside && !self.hidden.contains(&card.folder)
         };
-        let wanted = |item: &Surface| match item {
+        let wanted = |card: &Card| match &card.item {
             Surface::Material(m) => {
                 (!self.only_libraries || m.is_library()) && (!self.only_sized || prefs::known_size(settings, &self.roots, m).is_some())
             }
             _ => true,
         };
-        let mut shown: Vec<Surface> = view.items.iter().filter(|i| in_folder(i) && i.matches(&words) && wanted(i)).cloned().collect();
+        let found = |card: &Card| words.iter().all(|w| card.hay.contains(w.as_str()));
+        let mut shown: Vec<Arc<Card>> = view.items.iter().filter(|c| in_folder(c) && found(c) && wanted(c)).cloned().collect();
         if self.recent {
-            shown.sort_by_key(|i| std::cmp::Reverse(i.mtime()));
+            shown.sort_by_key(|c| std::cmp::Reverse(c.item.mtime()));
         }
-        let liked = |i: &Surface| favorites::is_favorite(settings, &i.favorite_key(&self.roots));
-        self.favorite_count =
-            if favorites::any(settings) { view.items.iter().filter(|i| !self.hidden.contains(&norm_key(i.folder())) && liked(i)).count() } else { 0 };
+        let any = favorites::any(settings);
+        let liked = |c: &Card| any && favorites::is_favorite(settings, &c.favorite);
+        self.favorite_count = if any { view.items.iter().filter(|c| !self.hidden.contains(&c.folder) && liked(c)).count() } else { 0 };
         if self.side.favorites {
-            shown.retain(liked);
+            shown.retain(|c| liked(c));
         } else if self.tab.favorites_first && self.favorite_count > 0 {
-            shown.sort_by_cached_key(|i| !liked(i)); // stable: the order of before within each part
+            shown.sort_by_cached_key(|c| !liked(c)); // stable: the order of before within each part
         }
         self.shown = shown;
-        let keys: HashSet<String> = self.shown.iter().map(Surface::key).collect();
-        self.selected.retain(|k| keys.contains(k));
+        if !self.selected.is_empty() {
+            let keys: HashSet<&str> = self.shown.iter().map(|c| c.key.as_str()).collect();
+            self.selected.retain(|k| keys.contains(k.as_str()));
+        }
         self.anchor = 0;
     }
 
     fn selection(&self) -> Vec<Surface> {
-        self.shown.iter().filter(|i| self.selected.contains(&i.key())).cloned().collect()
+        if self.selected.is_empty() {
+            return Vec::new();
+        }
+        self.shown.iter().filter(|c| self.selected.contains(&c.key)).map(|c| c.item.clone()).collect()
+    }
+
+    /// The material selected, when it is one alone and not a library.
+    fn one_material(&self) -> Option<Arc<Material>> {
+        match &self.selection()[..] {
+            [Surface::Material(m)] if !m.is_library() => Some(m.clone()),
+            _ => None,
+        }
     }
 
     fn pixels(&self, material: &Material) -> Option<(u32, u32)> {
@@ -441,13 +503,13 @@ impl SurfacePanel {
             ui.set_max_width(440.0);
             ui.label(fill(self.t(Text::MaterialExists), &[("name", &name)]));
             ui.horizontal(|ui| {
-                if ui.button(egui::RichText::new(self.t(Text::UseExisting)).strong()).clicked() {
+                if kit::button(ui, Kind::Primary, None, self.t(Text::UseExisting)).clicked() {
                     choice = Some(Some("use"));
                 }
-                if ui.button(self.t(Text::MakeNew)).clicked() {
+                if kit::button(ui, Kind::Action, None, self.t(Text::MakeNew)).clicked() {
                     choice = Some(Some("new"));
                 }
-                if ui.button(self.t(Text::Cancel)).clicked() {
+                if kit::button(ui, Kind::Action, None, self.t(Text::Cancel)).clicked() {
                     choice = Some(None);
                 }
             });
@@ -504,22 +566,31 @@ impl SurfacePanel {
         self.poll(&ctx, tools.settings);
         self.answers(tools);
         self.refresh(tools.settings);
-        egui::Panel::left("surface-tree").resizable(true).default_size(240.0).show(ui, |ui| self.tree(ui, tools));
-        egui::Panel::right("surface-detail").resizable(true).default_size(300.0).show(ui, |ui| {
-            egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-                self.options(ui, tools);
-                ui.separator();
-                self.detail(ui, tools);
+        let p = kit::pal(ui);
+        let side = egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin { left: 12, right: 8, top: 12, bottom: 8 });
+        egui::Panel::left("tree").frame(side).resizable(true).default_size(230.0).min_size(170.0).show(ui, |ui| self.tree(ui, tools));
+        if tools.info {
+            let frame = egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin::same(14));
+            egui::Panel::right("inspector").frame(frame).resizable(true).default_size(310.0).min_size(250.0).show(ui, |ui| {
+                egui::ScrollArea::vertical().id_salt("surface-detail").auto_shrink(false).show(ui, |ui| self.detail(ui, tools));
             });
+        }
+        let main = egui::Frame::new().fill(p.bg).inner_margin(egui::Margin { left: 18, right: 10, top: 12, bottom: 4 });
+        egui::CentralPanel::default().frame(main).show(ui, |ui| {
+            self.title_row(ui, tools);
+            ui.add_space(4.0);
+            self.option_row(ui, tools);
+            ui.add_space(6.0);
+            self.gallery(ui, tools);
         });
-        egui::CentralPanel::default().show(ui, |ui| self.gallery(ui, tools));
         self.drag(&ctx, tools);
         self.question(&ctx, tools);
     }
 
     fn tree(&mut self, ui: &mut egui::Ui, tools: &mut Tools<'_>) {
-        let total = self.view.as_ref().map_or(0, |v| v.items.iter().filter(|i| !self.hidden.contains(&norm_key(i.folder()))).count());
-        let changed = self.side.show(ui, "surfaces", tools.settings, self.lang, self.tab, (self.favorite_count, total));
+        kit::caption(ui, self.t(Text::Folders));
+        ui.add_space(2.0);
+        let changed = self.side.show(ui, "surfaces", tools.settings, self.lang, self.tab, (self.favorite_count, self.total));
         if changed.settings {
             self.save_settings(tools);
             self.settings_changed(tools.settings);
@@ -528,6 +599,7 @@ impl SurfacePanel {
             self.dirty = true;
             self.loader.clear_queue();
         }
+        self.tree_action = changed.action.or(self.tree_action.take());
     }
 
     /// Works out again what is hidden, the rows of the tree and what is shown.
@@ -536,7 +608,8 @@ impl SurfacePanel {
         let Some(view) = &self.view else { return };
         let (names, paths) = settings.hidden();
         self.hidden = hidden_folders(&view.folders, &self.roots, &names, &paths);
-        let items = view.items.iter().map(Surface::folder).filter(|f| !self.hidden.contains(&norm_key(f)));
+        let items = view.items.iter().map(|c| c.folder.as_str()).filter(|f| !self.hidden.contains(*f));
+        self.total = items.clone().count();
         let totals = foldertree::totals(&self.roots, items);
         // a folder per material does not help to find one: only those with two or more are shown
         let least = if self.kind == "materials" { 2 } else { 1 };
@@ -550,8 +623,16 @@ impl SurfacePanel {
     /// The cards for the quick look, and which one is selected.
     pub fn looks(&self, settings: &Settings) -> (Vec<crate::quicklook::Look>, Option<usize>) {
         let light = prefs::light(settings);
-        let at = self.shown.iter().position(|i| self.selected.contains(&i.key()));
-        (self.shown.iter().map(|i| (i.name().to_string(), i.large(light))).collect(), at)
+        let at = self.shown.iter().position(|c| self.selected.contains(&c.key));
+        (self.shown.iter().map(|c| (c.item.name().to_string(), c.item.large(light))).collect(), at)
+    }
+
+    /// Selects a card alone, and brings it into view.
+    pub fn select_only(&mut self, at: usize) {
+        if let Some(card) = self.shown.get(at).filter(|c| self.selected.len() != 1 || !self.selected.contains(&c.key)) {
+            self.selected = HashSet::from([card.key.clone()]);
+            (self.anchor, self.reveal) = (at, Some(at));
+        }
     }
 
     /// Whether a card was double-clicked, for the quick look.
@@ -565,37 +646,13 @@ impl SurfacePanel {
         self.dirty = true;
     }
 
-    /// Draws the heart of a card; `true` when it was clicked.
-    fn heart(&mut self, ui: &mut egui::Ui, at: usize, response: &egui::Response, tools: &mut Tools<'_>) -> bool {
-        self.look |= response.double_clicked();
-        let Some(key) = self.shown.get(at).map(|i| i.favorite_key(&self.roots)) else { return false };
-        let on = favorites::is_favorite(tools.settings, &key);
-        let clicked = crate::app::heart(ui, response, on);
-        if clicked {
-            self.toggle(&[key], tools);
-        }
-        clicked
-    }
-
-    fn combo<T: PartialEq + Copy>(ui: &mut egui::Ui, id: &str, label: &str, options: &[(T, String)], current: &mut T) -> bool {
-        let text = options.iter().find(|(v, _)| v == current).map(|(_, t)| t.clone()).unwrap_or_default();
-        let mut changed = false;
-        ui.horizontal(|ui| {
-            ui.label(label);
-            egui::ComboBox::from_id_salt(id).selected_text(text).show_ui(ui, |ui| {
-                for (value, text) in options {
-                    changed |= ui.selectable_value(current, *value, text).changed();
-                }
-            });
-        });
-        changed
-    }
-
     /// A choice kept in the settings as a text.
-    fn option_combo(&self, ui: &mut egui::Ui, tools: &mut Tools<'_>, key: &str, label: Text, options: &[(&'static str, String)]) {
+    fn option_combo(&self, ui: &mut egui::Ui, tools: &mut Tools<'_>, key: &str, tip: Text, options: &[(&'static str, &str)]) {
         let saved = prefs::option(tools.settings, key).and_then(Value::as_str).unwrap_or_default().to_string();
         let mut current = options.iter().map(|(v, _)| *v).find(|v| *v == saved).or_else(|| options.first().map(|(v, _)| *v)).unwrap_or_default();
-        if Self::combo(ui, key, self.t(label), options, &mut current) {
+        let changed = ui.scope(|ui| kit::combo(ui, key, options, &mut current));
+        changed.response.on_hover_text(self.t(tip));
+        if changed.inner {
             self.save(tools, key, current.into());
         }
     }
@@ -611,125 +668,153 @@ impl SurfacePanel {
         }
     }
 
-    fn options(&mut self, ui: &mut egui::Ui, tools: &mut Tools<'_>) {
-        let engines = [
-            ("auto", self.t(Text::EngineScene).to_string()),
-            ("corona", "Corona".to_string()),
-            ("vray", "V-Ray".to_string()),
-            ("max", "Physical".to_string()),
-        ];
-        self.option_combo(ui, tools, "engine", Text::OptEngine, &engines);
-        if self.kind != "textures" {
-            let mut res = prefs::resolution(tools.settings);
-            let mut list = vec![(Res::Highest, self.t(Text::ResHighest).to_string()), (Res::Lowest, self.t(Text::ResLowest).to_string())];
-            list.extend([8, 4, 2, 1].map(|k| (Res::K(k), format!("{k}K"))));
-            if Self::combo(ui, "res", self.t(Text::OptResolution), &list, &mut res) {
-                prefs::set_resolution(tools.settings, res);
-                self.save_settings(tools);
-            }
-        }
-        match self.kind.as_str() {
-            "materials" => {
-                let mut on = prefs::option(tools.settings, "displacement").and_then(Value::as_bool).unwrap_or(false);
-                if ui.checkbox(&mut on, self.t(Text::OptDisplacement)).changed() {
-                    self.save(tools, "displacement", on.into());
-                }
-                let mut on = prefs::option(tools.settings, "balls").and_then(Value::as_bool).unwrap_or(true);
-                if ui.checkbox(&mut on, self.t(Text::OptBalls)).changed() {
-                    self.save(tools, "balls", on.into());
-                }
-                let libraries = self.t(Text::OptOnlyLibraries);
-                self.dirty |= ui.checkbox(&mut self.only_libraries, libraries).changed();
-                let sized = self.t(Text::OptOnlySized);
-                self.dirty |= ui.checkbox(&mut self.only_sized, sized).changed();
-            }
-            "textures" => {
-                let roles = [
-                    ("auto", self.t(Text::RoleAuto).to_string()),
-                    ("color", self.t(Text::RoleColor).to_string()),
-                    ("data", self.t(Text::RoleData).to_string()),
-                ];
-                self.option_combo(ui, tools, "role", Text::OptRole, &roles);
-                let mappings = Mapping::ALL.map(|m| (m.key(), mapping_text(m, self.lang).to_string()));
-                self.option_combo(ui, tools, "mapping", Text::OptMapping, &mappings);
-                let mapping = prefs::option(tools.settings, "mapping").and_then(Value::as_str).and_then(Mapping::from_key);
-                size_fields(ui, &mut self.size, mapping.unwrap_or(Mapping::Uv).axes());
-            }
-            _ => {
-                let lights = [("day", self.t(Text::LightDay).to_string()), ("night", self.t(Text::LightNight).to_string())];
-                self.option_combo(ui, tools, "light", Text::OptLight, &lights);
-                let mut depth = prefs::option(tools.settings, "depth").and_then(Value::as_i64).unwrap_or(-1);
-                let mut list = vec![(-1, self.t(Text::DepthAuto).to_string())];
-                list.extend([(1, "×1"), (3, "×1.5"), (4, "×2"), (5, "×3"), (6, "×4"), (7, "×5")].map(|(v, t)| (v, t.to_string())));
-                if Self::combo(ui, "depth", self.t(Text::OptDepth), &list, &mut depth) {
-                    self.save(tools, "depth", depth.into());
-                }
-            }
-        }
-        let recent = self.t(Text::OptRecent);
-        self.dirty |= ui.checkbox(&mut self.recent, recent).changed();
-    }
-
-    fn detail(&mut self, ui: &mut egui::Ui, tools: &mut Tools<'_>) {
-        let selection = self.selection();
-        let [item] = &selection[..] else {
-            ui.weak(self.t(match self.kind.as_str() {
-                "materials" => Text::HintMaterials,
-                "textures" => Text::HintTextures,
-                _ => Text::HintInteriors,
-            }));
-            return;
+    /// The folder shown and how many cards, the filters, and what is done with those selected.
+    fn title_row(&mut self, ui: &mut egui::Ui, tools: &mut Tools<'_>) {
+        let p = kit::pal(ui);
+        let title = if !self.search.trim().is_empty() {
+            fill(self.t(Text::ResultsOf), &[("text", &self.search.trim())])
+        } else if self.side.favorites {
+            self.t(Text::Favorites).to_string()
+        } else {
+            self.side.folder.as_deref().map_or_else(|| self.t(Text::AllFolders).to_string(), file_name)
         };
-        let light = prefs::light(tools.settings);
-        if let Some(Some(texture)) = self.textures.get(&thumb_key(item, light)) {
-            let size = texture.size_vec2() * (ui.available_width() / texture.size_vec2().x);
-            ui.image((texture.id(), size));
-        }
-        ui.heading(item.name());
-        ui.label(egui::RichText::new(item.folder().display().to_string()).small().weak());
-        ui.add_space(6.0);
-        match item {
-            Surface::Material(m) if m.is_library() => {
-                ui.weak(self.t(Text::LibraryHint));
-            }
-            Surface::Material(m) => self.material_detail(ui, m, tools),
-            Surface::Texture(t) => {
-                let role = surfaces::guess_role(&file_name(&t.path));
-                ui.label(fill(self.t(Text::TextureRole), &[("role", &self.t(if role == "color" { Text::RoleColor } else { Text::RoleData }))]));
-            }
-            Surface::Room(r) => {
-                let values: [(&str, &dyn std::fmt::Display); 2] = [("width", &trim(r.size.width())), ("height", &trim(interiors::HEIGHT))];
-                ui.label(fill(self.t(Text::RoomWindow), &values));
-                let exr = r.pick(light, prefs::resolution(tools.settings)).map(|p| file_name(p)).unwrap_or_default();
-                ui.label(exr);
-                match &r.osl {
-                    Some(osl) => ui.label(file_name(osl)),
-                    None => ui.colored_label(ACCENT, self.t(Text::InteriorNoShader)),
-                };
-            }
-        }
-        ui.add_space(8.0);
-        if ui.button(self.t(Text::OpenFolder)).clicked() {
-            crate::platform::reveal(&item.file());
+        let count = fill(self.t(Text::SurfacesShown), &[("count", &self.shown.len())]);
+        let mut target = None;
+        ui.horizontal(|ui| {
+            ui.set_height(32.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.add_enabled_ui(!self.selected.is_empty(), |ui| {
+                    let apply = self.t(if self.kind == "textures" { Text::QuickMaterial } else { Text::Apply });
+                    if kit::button(ui, Kind::Primary, Some("check"), apply).on_hover_text(self.t(Text::MenuToSelection)).clicked() {
+                        target = Some("selection");
+                    }
+                    if self.kind == "interiors" {
+                        let window = kit::button(ui, Kind::Accent, None, self.t(Text::MakeWindow));
+                        if window.on_hover_text(self.t(Text::MenuWindow)).clicked() {
+                            target = Some("plane");
+                        }
+                    }
+                    if kit::button(ui, Kind::Action, None, self.t(Text::ToSlate)).on_hover_text(self.t(Text::MenuToSlate)).clicked() {
+                        target = Some("slate");
+                    }
+                });
+                if self.kind == "materials" {
+                    let balls = prefs::option(tools.settings, "balls").and_then(Value::as_bool).unwrap_or(true);
+                    if kit::chip(ui, self.t(Text::ChipBalls), balls).on_hover_text(self.t(Text::OptBalls)).clicked() {
+                        self.save(tools, "balls", (!balls).into());
+                    }
+                }
+                let options = [(false, self.t(Text::SortName)), (true, self.t(Text::SortRecent))];
+                self.dirty |= kit::combo(ui, "surface-sort", &options, &mut self.recent);
+                if self.kind == "materials" {
+                    if kit::chip(ui, self.t(Text::ChipSized), self.only_sized).on_hover_text(self.t(Text::OptOnlySized)).clicked() {
+                        (self.only_sized, self.dirty) = (!self.only_sized, true);
+                    }
+                    if kit::chip(ui, ".mat", self.only_libraries).on_hover_text(self.t(Text::OptOnlyLibraries)).clicked() {
+                        (self.only_libraries, self.dirty) = (!self.only_libraries, true);
+                    }
+                }
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    let room = (ui.available_width() - 90.0).max(40.0);
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(room, 30.0), Sense::hover());
+                    let at = rect.left_center();
+                    let used = kit::elided(ui.painter(), at, egui::Align2::LEFT_CENTER, &title, kit::strong(20.0), p.text, room);
+                    let at = egui::pos2(used.right() + 10.0, rect.center().y + 3.0);
+                    ui.painter().text(at, egui::Align2::LEFT_CENTER, count, egui::FontId::proportional(13.0), p.muted);
+                });
+            });
+        });
+        if let Some(target) = target {
+            let (items, info) = (self.selection(), tools.max.target());
+            self.send(target, &items, info, tools);
         }
     }
 
-    fn material_detail(&mut self, ui: &mut egui::Ui, material: &Material, tools: &mut Tools<'_>) {
-        let shape = self.shape(tools.settings, material);
-        let aspect = shape.map(|(a, _)| a);
+    /// What goes to 3ds Max with the cards.
+    fn option_row(&mut self, ui: &mut egui::Ui, tools: &mut Tools<'_>) {
+        ui.horizontal_wrapped(|ui| {
+            ui.set_row_height(28.0);
+            ui.spacing_mut().item_spacing.x = 6.0;
+            let engines = [("auto", self.t(Text::EngineScene)), ("corona", "Corona"), ("vray", "V-Ray"), ("max", "Physical")];
+            self.option_combo(ui, tools, "engine", Text::TipEngine, &engines);
+            if self.kind != "textures" {
+                let mut res = prefs::resolution(tools.settings);
+                let mut list = vec![(Res::Highest, self.t(Text::ResHighest)), (Res::Lowest, self.t(Text::ResLowest))];
+                list.extend([(Res::K(8), "8K"), (Res::K(4), "4K"), (Res::K(2), "2K"), (Res::K(1), "1K")]);
+                let changed = ui.scope(|ui| kit::combo(ui, "res", &list, &mut res));
+                changed.response.on_hover_text(self.t(Text::TipResolution));
+                if changed.inner {
+                    prefs::set_resolution(tools.settings, res);
+                    self.save_settings(tools);
+                }
+            }
+            match self.kind.as_str() {
+                "materials" => self.material_options(ui, tools),
+                "textures" => self.texture_options(ui, tools),
+                _ => {
+                    let lights = [("day", self.t(Text::LightDay)), ("night", self.t(Text::LightNight))];
+                    self.option_combo(ui, tools, "light", Text::OptLight, &lights);
+                    let mut depth = prefs::option(tools.settings, "depth").and_then(Value::as_i64).unwrap_or(-1);
+                    let list = [(-1, self.t(Text::DepthAuto)), (1, "×1"), (3, "×1.5"), (4, "×2"), (5, "×3"), (6, "×4"), (7, "×5")];
+                    let changed = ui.scope(|ui| kit::combo(ui, "depth", &list, &mut depth));
+                    changed.response.on_hover_text(self.t(Text::TipDepth));
+                    if changed.inner {
+                        self.save(tools, "depth", depth.into());
+                    }
+                }
+            }
+        });
+    }
+
+    fn texture_options(&mut self, ui: &mut egui::Ui, tools: &mut Tools<'_>) {
+        let roles = [("auto", self.t(Text::RoleAuto)), ("color", self.t(Text::RoleColor)), ("data", self.t(Text::RoleData))];
+        self.option_combo(ui, tools, "role", Text::OptRole, &roles);
+        let mappings = Mapping::ALL.map(|m| (m.key(), mapping_text(m, self.lang)));
+        self.option_combo(ui, tools, "mapping", Text::TipMapping, &mappings);
+        let mapping = prefs::option(tools.settings, "mapping").and_then(Value::as_str).and_then(Mapping::from_key);
+        size_fields(ui, &mut self.size, mapping.unwrap_or(Mapping::Uv).axes());
+    }
+
+    /// The mapping and the real size of the selected material, kept for it as they are changed.
+    fn material_options(&mut self, ui: &mut egui::Ui, tools: &mut Tools<'_>) {
+        let one = self.one_material();
+        match &one {
+            None => {
+                let mut mapping = Mapping::Uv;
+                let mut size = self.size;
+                ui.add_enabled_ui(false, |ui| {
+                    kit::combo(ui, "material-mapping", &[(Mapping::Uv, mapping_text(Mapping::Uv, self.lang))], &mut mapping);
+                    size_fields(ui, &mut size, 0);
+                })
+                .response
+                .on_disabled_hover_text(self.t(Text::TipSizeSelect));
+            }
+            Some(material) => self.one_options(ui, material, tools),
+        }
+        let on = prefs::option(tools.settings, "displacement").and_then(Value::as_bool).unwrap_or(false);
+        if kit::chip(ui, self.t(Text::ChipDisplacement), on).on_hover_text(self.t(Text::OptDisplacement)).clicked() {
+            self.save(tools, "displacement", (!on).into());
+        }
+    }
+
+    fn one_options(&mut self, ui: &mut egui::Ui, material: &Material, tools: &mut Tools<'_>) {
+        let aspect = self.shape(tools.settings, material).map(|(a, _)| a);
         let mut mapping = prefs::mapping_of(tools.settings, &self.roots, material, aspect);
         let square = aspect.is_none_or(|a| a == Aspect::Square);
-        let list: Vec<(Mapping, String)> = Mapping::ALL
+        let list: Vec<(Mapping, &str)> = Mapping::ALL
             .into_iter()
             .filter(|m| square || *m != Mapping::Triplanar) // a triplanar of a long texture would squash it
-            .map(|m| (m, mapping_text(m, self.lang).to_string()))
+            .map(|m| (m, mapping_text(m, self.lang)))
             .collect();
-        if Self::combo(ui, "material-mapping", self.t(Text::OptMapping), &list, &mut mapping) {
+        let changed = ui.scope(|ui| kit::combo(ui, "material-mapping", &list, &mut mapping));
+        changed.response.on_hover_text(self.t(Text::TipMapping));
+        if changed.inner {
             prefs::remember(tools.settings, prefs::MAPPINGS, &self.roots, material, Some(mapping.key().into()));
             self.save_settings(tools);
         }
         let mut size = prefs::size_of(tools.settings, &self.roots, material);
-        let (changed, ended) = size_fields(ui, &mut size, 3);
+        let (changed, ended) = size_fields(ui, &mut size, mapping.axes());
         if changed {
             let same = material.size.is_some_and(|(w, h)| size == [w, h, h]);
             let value = (!same).then(|| json!(size.map(|v| (v * 100.0).round() / 100.0)));
@@ -739,33 +824,125 @@ impl SurfacePanel {
             self.save_settings(tools);
         }
         let saved = prefs::saved_size(tools.settings, &self.roots, material).is_some();
-        let note = match (saved, material.size.is_some()) {
-            (true, _) => Text::SizeSaved,
-            (false, true) => Text::SizeFromName,
-            (false, false) => Text::SizeUnknown,
+        if saved && kit::icon_button(ui, "refresh", self.t(Text::SizeForget), false).clicked() {
+            self.forget_size(material, tools);
+        }
+    }
+
+    fn forget_size(&self, material: &Material, tools: &mut Tools<'_>) {
+        prefs::remember(tools.settings, prefs::SIZES, &self.roots, material, None);
+        self.save_settings(tools);
+    }
+
+    fn detail(&mut self, ui: &mut egui::Ui, tools: &mut Tools<'_>) {
+        let selection = self.selection();
+        let [item] = &selection[..] else {
+            if selection.len() > 1 {
+                ui.label(egui::RichText::new(fill(self.t(Text::SelectedAny), &[("count", &selection.len())])).font(kit::strong(15.0)));
+            }
+            ui.weak(self.t(match self.kind.as_str() {
+                "materials" => Text::HintMaterials,
+                "textures" => Text::HintTextures,
+                _ => Text::HintInteriors,
+            }));
+            return;
         };
-        ui.label(egui::RichText::new(self.t(note)).small().weak());
-        if saved && ui.small_button(self.t(Text::SizeForget)).clicked() {
-            prefs::remember(tools.settings, prefs::SIZES, &self.roots, material, None);
-            self.save_settings(tools);
+        let light = prefs::light(tools.settings);
+        if let Some(Some(texture)) = self.textures.get(&thumb_key(item, light)) {
+            let size = texture.size_vec2() * (ui.available_width() / texture.size_vec2().max_elem());
+            let image = ui.add(egui::Image::new((texture.id(), size)).sense(Sense::click()));
+            self.look |= image.on_hover_text(self.t(Text::LookHint)).on_hover_cursor(egui::CursorIcon::PointingHand).clicked();
         }
-        if ui.small_button(self.t(Text::SizeToFolder)).clicked() {
-            self.size_to_folder(material, size, tools);
+        ui.add(egui::Label::new(egui::RichText::new(item.name()).font(kit::strong(16.0))).wrap());
+        ui.add(egui::Label::new(egui::RichText::new(item.folder().display().to_string()).small().weak()).wrap());
+        ui.add_space(6.0);
+        match item {
+            Surface::Material(m) if m.is_library() => {
+                kit::caption(ui, self.t(Text::CapLibrary));
+                ui.label(m.mat_file.as_deref().map(file_name).unwrap_or_default());
+                ui.weak(self.t(Text::LibraryHint));
+            }
+            Surface::Material(m) => self.material_detail(ui, m, tools.settings),
+            Surface::Texture(t) => {
+                kit::caption(ui, self.t(Text::CapTexture));
+                ui.label(file_name(&t.path));
+                let role = surfaces::guess_role(&file_name(&t.path));
+                ui.weak(fill(self.t(Text::TextureRole), &[("role", &self.t(if role == "color" { Text::RoleColor } else { Text::RoleData }))]));
+            }
+            Surface::Room(r) => self.room_detail(ui, r, light, tools.settings),
         }
+        ui.add_space(10.0);
+        let width = ui.available_width();
+        if kit::sized_button(ui, Kind::Action, Some("folder"), self.t(Text::FolderReveal), width).clicked() {
+            crate::platform::reveal(&item.file());
+        }
+    }
+
+    fn room_detail(&self, ui: &mut egui::Ui, room: &Room, light: Light, settings: &Settings) {
+        kit::caption(ui, self.t(Text::CapWindow));
+        ui.label(self.room_text(room));
+        ui.weak(self.t(Text::RoomPlane));
+        ui.add_space(6.0);
+        kit::caption(ui, self.t(Text::MapsToLoad));
+        ui.label(room.pick(light, prefs::resolution(settings)).map(|p| file_name(p)).unwrap_or_default());
+        ui.add_space(6.0);
+        kit::caption(ui, "Shader OSL");
+        match &room.osl {
+            Some(osl) => ui.label(file_name(osl)),
+            None => ui.colored_label(kit::pal(ui).warn, self.t(Text::InteriorNoShader)),
+        };
+    }
+
+    fn room_text(&self, room: &Room) -> String {
+        let values: [(&str, &dyn std::fmt::Display); 2] = [("width", &trim(room.size.width())), ("height", &trim(interiors::HEIGHT))];
+        fill(self.t(Text::RoomWindow), &values)
+    }
+
+    fn material_detail(&self, ui: &mut egui::Ui, material: &Material, settings: &Settings) {
+        kit::caption(ui, self.t(Text::CapSize));
+        let saved = prefs::saved_size(settings, &self.roots, material).is_some();
+        match prefs::known_size(settings, &self.roots, material) {
+            Some(size) => {
+                ui.label(format!("X {} · Y {} · Z {} cm", trim(size[0]), trim(size[1]), trim(size[2])));
+                ui.label(egui::RichText::new(self.t(if saved { Text::SizeSaved } else { Text::SizeFromName })).small().weak());
+            }
+            None => {
+                ui.weak(self.t(Text::SizeUnknown));
+            }
+        }
+        let shape = self.shape(settings, material);
         if let Some((aspect, ratio)) = shape {
-            ui.label(ratio_text(aspect, ratio));
+            let text = self.t(match aspect {
+                Aspect::Square => Text::ShapeSquare,
+                Aspect::Wide => Text::ShapeWide,
+                Aspect::Tall => Text::ShapeTall,
+            });
+            ui.label(egui::RichText::new(format!("{text} · {}", ratio_text(aspect, ratio))).weak());
+        }
+        let mapping = prefs::mapping_of(settings, &self.roots, material, shape.map(|(a, _)| a));
+        ui.label(egui::RichText::new(format!("{}: {}", self.t(Text::OptMapping), mapping_text(mapping, self.lang))).weak());
+        let resolutions: Vec<String> = material.maps.keys().filter(|r| **r > 0).map(|r| format!("{r}K")).collect();
+        if !resolutions.is_empty() {
+            ui.add_space(6.0);
+            kit::caption(ui, self.t(Text::CapResolutions));
+            ui.label(resolutions.join(" · "));
         }
         ui.add_space(6.0);
-        ui.label(egui::RichText::new(self.t(Text::MapsToLoad).to_uppercase()).small().strong());
-        for (channel, file) in material.pick(prefs::resolution(tools.settings)) {
+        kit::caption(ui, self.t(Text::MapsToLoad));
+        for (channel, file) in material.pick(prefs::resolution(settings)) {
             let (letters, [r, g, b]) = channel.badge();
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(letters).monospace().color(Color32::WHITE).background_color(Color32::from_rgb(r, g, b)));
-                ui.label(egui::RichText::new(file_name(&file)).small());
+                ui.label(
+                    egui::RichText::new(format!(" {letters} "))
+                        .font(kit::mono(10.5))
+                        .color(Color32::WHITE)
+                        .background_color(Color32::from_rgb(r, g, b)),
+                );
                 if channel == Channel::Ao {
                     ui.weak(self.t(Text::NotWired));
                 }
             });
+            ui.add(egui::Label::new(egui::RichText::new(file_name(&file)).small().weak()).wrap());
         }
         if material.tiles > 0 {
             ui.weak(fill(self.t(Text::Planks), &[("count", &material.tiles)]));
@@ -776,8 +953,8 @@ impl SurfacePanel {
     fn size_to_folder(&mut self, material: &Material, size: [f64; 3], tools: &mut Tools<'_>) {
         let folder = norm_key(&material.folder);
         let mut count = 0;
-        for item in self.view.iter().flat_map(|v| &v.items) {
-            if let Surface::Material(other) = item
+        for card in self.view.iter().flat_map(|v| &v.items) {
+            if let Surface::Material(other) = &card.item
                 && !other.is_library()
                 && norm_key(&other.folder) == folder
                 && prefs::known_size(tools.settings, &self.roots, other).is_none()
@@ -793,94 +970,121 @@ impl SurfacePanel {
     fn gallery(&mut self, ui: &mut egui::Ui, tools: &mut Tools<'_>) {
         if self.roots.is_empty() || self.shown.is_empty() {
             let text = if self.roots.is_empty() {
-                Text::NoFolders
-            } else if self.scanning {
-                Text::Scanning
+                self.t(Text::NoFolders).to_string()
+            } else if self.scanning && self.view.is_none() {
+                self.t(Text::Scanning).to_string()
+            } else if !self.search.trim().is_empty() {
+                fill(self.t(Text::NothingMatches), &[("text", &self.search.trim())])
+            } else if self.side.favorites {
+                self.t(Text::NoFavorites).to_string()
             } else {
-                Text::NoSurfaces
+                self.t(Text::NoSurfaces).to_string()
             };
-            ui.centered_and_justified(|ui| ui.label(self.t(text)));
+            ui.centered_and_justified(|ui| ui.weak(text));
             return;
         }
-        let side = tools.settings.data.get("thumb_size").and_then(Value::as_f64).unwrap_or(160.0).clamp(80.0, 400.0) as f32;
-        let card = Vec2::new(side, side + FOOTER);
-        let columns = (((ui.available_width() + GAP) / (side + GAP)).floor() as usize).max(1);
-        let rows = self.shown.len().div_ceil(columns);
-        let mut clicked = None;
-        let mut action: Option<&'static str> = None;
-        let mut favorite = false;
-        egui::ScrollArea::vertical().auto_shrink(false).show_rows(ui, card.y + GAP, rows, |ui, range| {
+        let thumb = tools.settings.data.get("thumb_size").and_then(Value::as_f64).unwrap_or(160.0).clamp(80.0, 400.0) as f32;
+        let bar = ui.spacing().scroll.bar_width + ui.spacing().scroll.bar_inner_margin + ui.spacing().scroll.bar_outer_margin;
+        let grid = crate::app::Grid::new(ui.available_width() - bar, thumb, true);
+        let rows = self.shown.len().div_ceil(grid.columns);
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        let mut area = egui::ScrollArea::vertical().id_salt("surface-gallery").auto_shrink(false);
+        if let Some(at) = self.reveal.take() {
+            let top = (at / grid.columns) as f32 * grid.cell.y;
+            area = area.vertical_scroll_offset((top - ui.available_height() / 2.0 + grid.cell.y / 2.0).max(0.0));
+        }
+        let mut seen = 0..0;
+        area.show_rows(ui, grid.cell.y, rows, |ui, range| {
+            seen = range.start * grid.columns..range.end * grid.columns;
             for row in range {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = GAP;
-                    for at in row * columns..((row + 1) * columns).min(self.shown.len()) {
-                        let response = self.card(ui, at, card, tools.settings);
-                        let here = self.shown.get(at).map(|i| self.selected.contains(&i.key())).unwrap_or(false);
-                        if response.drag_started() {
-                            if !here {
-                                self.select(at, (false, false));
-                            }
-                            self.dragging = true;
-                        }
-                        if response.clicked() {
-                            clicked = Some(at);
-                        }
-                        if self.heart(ui, at, &response, tools) {
-                            clicked = None;
-                        }
-                        if response.secondary_clicked() && !here {
-                            self.select(at, (false, false));
-                        }
-                        response.context_menu(|ui| {
-                            action = self.menu(ui).or(action);
-                            if ui.button(self.t(Text::FavoriteToggle)).clicked() {
-                                favorite = true;
-                                ui.close();
-                            }
-                        });
+                    for at in row * grid.columns..((row + 1) * grid.columns).min(self.shown.len()) {
+                        self.card(ui, at, grid, tools);
                     }
                 });
-                ui.add_space(GAP - ui.spacing().item_spacing.y);
+            }
+            let rest = ui.available_rect_before_wrap();
+            if rest.is_positive() && ui.interact(rest, ui.scope_id().with("empty"), Sense::click()).clicked() {
+                self.selected.clear();
             }
         });
-        if let Some(at) = clicked {
-            self.select(at, ui.input(|i| (i.modifiers.command, i.modifiers.shift)));
-        }
-        if favorite {
-            let keys: Vec<String> = self.selection().iter().map(|i| i.favorite_key(&self.roots)).collect();
-            self.toggle(&keys, tools);
-        }
-        if let Some(target) = action {
-            let (items, info) = (self.selection(), tools.max.target());
-            self.send(target, &items, info, tools);
+        if self.loader.waiting() <= 4 {
+            let light = prefs::light(tools.settings);
+            let count = seen.len();
+            for card in self.shown.iter().skip(seen.end).take(count * 2) {
+                let key = thumb_key(&card.item, light);
+                if !self.textures.contains_key(&key)
+                    && let Some(src) = card.item.thumb(light)
+                {
+                    self.loader.prefetch(&key, &src);
+                }
+            }
         }
     }
 
-    fn menu(&self, ui: &mut egui::Ui) -> Option<&'static str> {
+    fn menu(&mut self, ui: &mut egui::Ui, card: &Card, tools: &mut Tools<'_>) {
+        ui.set_min_width(260.0);
+        let items = self.selection();
+        let keys: Vec<String> = self.shown.iter().filter(|c| self.selected.contains(&c.key)).map(|c| c.favorite.clone()).collect();
+        let all = keys.iter().all(|k| favorites::is_favorite(tools.settings, k));
+        if ui.button(self.t(if all { Text::FavoriteRemove } else { Text::FavoriteAdd })).clicked() {
+            self.toggle(&keys, tools);
+        }
+        ui.separator();
         let mut entries = vec![("selection", if self.kind == "textures" { Text::MenuQuickMaterial } else { Text::MenuToSelection })];
         if self.kind == "interiors" {
             entries.push(("plane", Text::MenuWindow));
         }
         entries.push(("slate", Text::MenuToSlate));
-        let mut out = None;
         for (target, text) in entries {
             if ui.button(self.t(text)).clicked() {
-                out = Some(target);
-                ui.close();
+                let info = tools.max.target();
+                self.send(target, &items, info, tools);
             }
         }
-        out
+        ui.separator();
+        if let Some(material) = self.one_material() {
+            if prefs::saved_size(tools.settings, &self.roots, &material).is_some() && ui.button(self.t(Text::SizeForget)).clicked() {
+                self.forget_size(&material, tools);
+            }
+            if ui.button(self.t(Text::SizeToFolder)).clicked() {
+                let size = prefs::size_of(tools.settings, &self.roots, &material);
+                self.size_to_folder(&material, size, tools);
+            }
+            ui.separator();
+        }
+        if ui.button(self.t(Text::FolderReveal)).clicked() {
+            crate::platform::reveal(&card.item.file());
+        }
+        match &card.item {
+            Surface::Material(m) if !m.is_library() => {
+                if ui.button(self.t(Text::CopyMaps)).clicked() {
+                    let maps = m.pick(prefs::resolution(tools.settings)).into_values();
+                    let list: Vec<String> = maps.map(|p| p.display().to_string()).collect();
+                    ui.ctx().copy_text(list.join("\n"));
+                }
+            }
+            item => {
+                if ui.button(self.t(Text::CopyPath)).clicked() {
+                    let file = match item {
+                        Surface::Room(r) => r.pick(prefs::light(tools.settings), prefs::resolution(tools.settings)).cloned().unwrap_or_default(),
+                        other => other.file(),
+                    };
+                    ui.ctx().copy_text(file.display().to_string());
+                }
+            }
+        }
     }
 
-    fn select(&mut self, at: usize, (ctrl, shift): (bool, bool)) {
-        let Some(key) = self.shown.get(at).map(Surface::key) else { return };
-        if shift {
+    fn select(&mut self, at: usize, modifiers: egui::Modifiers) {
+        let Some(key) = self.shown.get(at).map(|c| c.key.clone()) else { return };
+        if modifiers.shift {
             let range = self.anchor.min(at)..=self.anchor.max(at);
-            self.selected = self.shown.get(range).unwrap_or_default().iter().map(Surface::key).collect();
+            self.selected = self.shown.get(range).unwrap_or_default().iter().map(|c| c.key.clone()).collect();
             return;
         }
         self.anchor = at;
-        if !ctrl {
+        if !modifiers.command {
             self.selected.clear();
         }
         if !self.selected.remove(&key) {
@@ -888,45 +1092,103 @@ impl SurfacePanel {
         }
     }
 
-    fn card(&mut self, ui: &mut egui::Ui, at: usize, size: Vec2, settings: &Settings) -> egui::Response {
-        let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
-        let Some(item) = self.shown.get(at).cloned() else { return response };
-        if !ui.is_rect_visible(rect) {
-            return response;
+    fn card(&mut self, ui: &mut egui::Ui, at: usize, grid: crate::app::Grid, tools: &mut Tools<'_>) {
+        let (cell, response) = ui.allocate_exact_size(grid.cell, Sense::click_and_drag());
+        let Some(card) = self.shown.get(at).cloned() else { return };
+        if !ui.is_rect_visible(cell) {
+            return;
         }
-        let selected = self.selected.contains(&item.key());
+        let rect = cell.shrink(grid.margin);
+        let selected = self.selected.contains(&card.key);
+        let hovered = response.hovered();
+        let p = kit::pal(ui);
         let painter = ui.painter_at(rect);
-        let visuals = ui.visuals();
-        let back = if selected || response.hovered() { visuals.widgets.hovered.weak_bg_fill } else { visuals.faint_bg_color };
-        painter.rect_filled(rect, 0.0, back);
-        let area = Rect::from_min_size(rect.min, Vec2::new(size.x, size.y - FOOTER));
+        painter.rect_filled(rect, 0.0, if selected || hovered { p.surface_hi } else { p.surface });
+        let area = Rect::from_min_size(rect.min, Vec2::splat(grid.side));
+        self.paint_image(&painter, area, &card.item, tools.settings, p);
+        self.badges(&painter, area, &card.item, tools.settings);
+        let foot = Rect::from_min_max(egui::pos2(rect.left() + 10.0, area.bottom()), rect.max - Vec2::new(10.0, 4.0));
+        let color = if selected { p.accent } else { p.text };
+        let name = egui::pos2(foot.left(), foot.top() + 13.0);
+        kit::elided(&painter, name, egui::Align2::LEFT_CENTER, card.item.name(), kit::strong(13.0), color, foot.width() - 24.0);
+        let sub = self.subtitle(&card.item, tools.settings);
+        let under = egui::pos2(foot.left(), foot.bottom() - 10.0);
+        kit::elided(&painter, under, egui::Align2::LEFT_CENTER, &sub, egui::FontId::proportional(11.5), p.muted, foot.width());
+        let border = match (selected, hovered) {
+            (true, _) => Stroke::new(2.5, p.accent),
+            (false, true) => Stroke::new(1.2, p.border_hi),
+            _ => Stroke::new(1.0, p.border),
+        };
+        ui.painter().rect_stroke(rect, 0.0, border, egui::StrokeKind::Inside);
+        let on = favorites::is_favorite(tools.settings, &card.favorite);
+        let heart = Rect::from_min_size(egui::pos2(rect.right() - 30.0, rect.bottom() - FOOTER + 2.0), Vec2::splat(24.0));
+        if (on || hovered || selected) && crate::app::heart(ui, &response, heart, on, false) {
+            self.toggle(std::slice::from_ref(&card.favorite), tools);
+            return;
+        }
+        if response.drag_started_by(egui::PointerButton::Primary) {
+            if !selected {
+                self.select(at, egui::Modifiers::NONE);
+            }
+            self.dragging = true;
+        }
+        if response.secondary_clicked() && !selected {
+            self.select(at, egui::Modifiers::NONE);
+        }
+        if response.double_clicked() {
+            self.selected = HashSet::from([card.key.clone()]);
+            self.look = true;
+        } else if response.clicked() {
+            self.select(at, ui.input(|i| i.modifiers));
+        }
+        response.context_menu(|ui| self.menu(ui, &card, tools));
+    }
+
+    /// Under the name: the size that is known, and the folder.
+    fn subtitle(&self, item: &Surface, settings: &Settings) -> String {
+        let folder = file_name(item.folder());
+        match item {
+            Surface::Material(m) if m.is_library() => self.t(Text::CapLibrary).to_string(),
+            Surface::Material(m) => match prefs::known_size(settings, &self.roots, m) {
+                Some(size) => format!("{} · {folder}", size_text(size)),
+                None => folder,
+            },
+            Surface::Room(r) => self.room_text(r),
+            Surface::Texture(_) => folder,
+        }
+    }
+
+    fn paint_image(&mut self, painter: &egui::Painter, area: Rect, item: &Surface, settings: &Settings, p: &kit::Palette) {
         let light = prefs::light(settings);
-        let key = thumb_key(&item, light);
-        match self.textures.get(&key) {
+        let key = thumb_key(item, light);
+        let waiting = match self.textures.get(&key) {
             Some(Some(texture)) => {
                 let balls = prefs::option(settings, "balls").and_then(Value::as_bool).unwrap_or(true);
-                let plain = matches!(&item, Surface::Material(m) if m.preview.is_none());
-                if balls && plain { ball(&painter, area, texture) } else { picture(&painter, area, texture) }
+                match item {
+                    Surface::Material(m) if m.preview.is_none() && balls => ball(painter, area, texture),
+                    Surface::Texture(_) => crate::app::picture(painter, area, texture),
+                    _ => cover(painter, area, texture),
+                }
+                return;
             }
-            Some(None) => {
-                let font = egui::FontId::proportional(11.0);
-                painter.text(area.center(), egui::Align2::CENTER_CENTER, self.t(Text::NoPreview), font, visuals.weak_text_color());
-            }
+            Some(None) => false,
             None => match item.thumb(light) {
-                Some(src) => self.loader.request(&key, &src),
+                Some(src) => {
+                    self.loader.request(&key, &src);
+                    true
+                }
                 None => {
                     self.textures.insert(key, None);
+                    false
                 }
             },
-        }
-        self.badges(&painter, area, &item, settings);
-        let galley = painter.layout(item.name().to_string(), egui::FontId::proportional(12.0), visuals.text_color(), size.x - 12.0);
-        let top = rect.bottom() - FOOTER / 2.0 - galley.size().y.min(FOOTER) / 2.0;
-        painter.galley(egui::pos2(rect.left() + 6.0, top), galley, Color32::WHITE);
-        if selected {
-            painter.rect_stroke(rect, 0.0, Stroke::new(2.0, ACCENT), egui::StrokeKind::Inside);
-        }
-        response
+        };
+        let text = match item {
+            _ if waiting => self.t(Text::Loading),
+            Surface::Material(m) if m.is_library() => ".mat",
+            _ => self.t(Text::NoPreview),
+        };
+        painter.text(area.center(), egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(11.5), p.faint);
     }
 
     fn badges(&self, painter: &egui::Painter, area: Rect, item: &Surface, settings: &Settings) {
@@ -1006,13 +1268,13 @@ fn size_fields(ui: &mut egui::Ui, size: &mut [f64; 3], axes: usize) -> (bool, bo
     ui.horizontal(|ui| {
         for (i, (label, value)) in ["X", "Y", "Z"].iter().zip(size.iter_mut()).enumerate() {
             ui.add_enabled_ui(i < axes, |ui| {
-                ui.label(*label);
+                ui.weak(*label);
                 let response = ui.add(egui::DragValue::new(value).speed(1.0).range(0.1..=100_000.0).max_decimals(2));
                 changed |= response.changed();
                 ended |= response.drag_stopped() || response.lost_focus();
             });
         }
-        ui.label("cm");
+        ui.weak("cm");
     });
     (changed, ended)
 }
@@ -1021,10 +1283,13 @@ fn whole() -> Rect {
     Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0))
 }
 
-fn picture(painter: &egui::Painter, area: Rect, texture: &TextureHandle) {
+/// The image over the whole area, cut where it does not fit.
+fn cover(painter: &egui::Painter, area: Rect, texture: &TextureHandle) {
     let size = texture.size_vec2();
-    let scale = (area.width() / size.x).min(area.height() / size.y);
-    painter.image(texture.id(), Rect::from_center_size(area.center(), size * scale), whole(), Color32::WHITE);
+    let part = Vec2::new(area.width() / size.x, area.height() / size.y);
+    let seen = part / part.max_elem();
+    let uv = Rect::from_center_size(egui::pos2(0.5, 0.5), seen);
+    painter.image(texture.id(), area, uv, Color32::WHITE);
 }
 
 /// A material ball: the texture in a circle, with light from the upper left. Not a render.

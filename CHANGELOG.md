@@ -13,10 +13,20 @@ What changed for users in each version of OpenLibrary, newest first.
 - **Your settings come along.** The first time, the tabs and folders of the Python version are brought over
   from its settings; that version's own files are not touched.
 - In English and in Spanish, as the other Open3D apps.
-- **Drag a model into 3ds Max.** Drop a card on a 3ds Max window to merge it and place it with the mouse (it
-  rests on surfaces; the wheel turns it, a right click or Esc ends); with Shift it comes in as a Corona or
-  V-Ray proxy, with Ctrl in its original place. The same three choices are in the card's right-click menu.
-  The version of the scene's renderer is used, and the status bar says when there is none.
+- **Where the Python version had it.** The tabs, the search, the light and dark modes, the filters (renderer, with
+  warnings, without preview), the order, cards or only images, the size of the thumbnails and always on top are where
+  they were. A button of the status bar shows and hides the panel of information.
+- **The panel of a model.** Its preview large, opening its `.max` in a 3ds Max, its versions with their size, date and
+  data, the external files it does not find by name, and whether its proxy is made.
+- **Quick.** The window never waits for the server: what it shows of each card is read beforehand, and the tabs stay
+  as you left them.
+- **Drag models into 3ds Max.** Drop one or several cards on a 3ds Max window and choose in the menu that opens there:
+  merge and place with the mouse (it rests on surfaces; the wheel turns it, a right click or Esc ends), as a Corona or
+  V-Ray proxy, or in its original place. Shift and Ctrl skip the menu, for the last two. The same choices are in the
+  panel of the model and in the card's right-click menu. The version of the scene's renderer is used; when there is
+  none you are asked which one, or it is used without asking, as you choose in Settings.
+- **A model the scene has already.** When it is there as a proxy or as geometry, OpenLibrary says so and offers an
+  instance of it, or bringing it in again; then 3ds Max asks what to do with the repeated names and materials.
 - **The bridge in 3ds Max.** When OpenLibrary opens it offers to install its bridge in every 3ds Max 2025 or
   later that lacks it, and to update one that is old. It lives beside the Python version's bridge, which
   keeps working. It obeys only OpenLibrary: every request carries a token, kept encrypted for your Windows
