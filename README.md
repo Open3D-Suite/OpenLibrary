@@ -3,7 +3,7 @@
 OpenLibrary is a library of 3D models, materials and textures for 3ds Max, with Corona and V-Ray: browse
 your own folders with previews, drag a model or a material into the scene, and catalogue new downloads in a
 click. A single Windows program, nothing else to install, no account. Part of the
-[Open3D](https://github.com/carlesllavata/Open3D) suite of open-source tools for 3D work.
+[Open3D](https://github.com/Open3D-Suite) suite of open-source tools for 3D work.
 
 **Version 0.1.0** – what changed in each version is in [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -11,7 +11,7 @@ click. A single Windows program, nothing else to install, no account. Part of th
 
 Windows 10 or 11, 64-bit. Nothing else is needed. Two ways:
 
-- **With the [Open3D launcher](https://github.com/carlesllavata/Open3D)**: press *Install* on
+- **With the [Open3D launcher](https://github.com/Open3D-Suite/Open3D-Launcher/releases/latest)**: press *Install* on
   OpenLibrary's card. It is installed for everyone on the computer in
   `C:\Program Files\Open3D\OpenLibrary`, with a shortcut in the Start menu, and Windows asks for
   permission at each install and update. The launcher updates it and removes it.
@@ -32,10 +32,10 @@ else it wrote in `%LOCALAPPDATA%\Open3D\OpenLibrary`; delete those folders too i
 Open *Settings*, add the folders of your library to its tabs and install the bridge in your 3ds Max (2025 or
 later); restart 3ds Max. Then:
 
-- **Models**: drag a card onto 3ds Max. With Shift it comes in as a Corona or V-Ray proxy, with Ctrl in its
-  original place.
+- **Models**: drag one or several cards onto 3ds Max and choose how they come in: placed with the mouse, as a Corona or
+  V-Ray proxy, or in their original place. A model the scene has already can come in as an instance.
 - **Materials, textures and interiors**: drag a card onto an object or onto the Slate editor.
-- **Catalogue…** opens a download and leaves it in the library under one name.
+- **Catalogue** opens a download and leaves it in the library under one name.
 
 A library is only folders of yours: OpenLibrary keeps no database and changes nothing in them unless you ask.
 OpenLibrary does not use the internet.

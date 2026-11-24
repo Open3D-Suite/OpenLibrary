@@ -2,7 +2,7 @@
 
 What changed for users in each version of OpenLibrary, newest first.
 
-## In development
+## 0.1.0 — 2026-11-24
 
 - **First version.** Starts the Rust rewrite of OpenLibrary from the Open3D template.
 - **Browse your models.** The models tab shows every model of its folders with its preview, or, when it has
@@ -35,7 +35,7 @@ What changed for users in each version of OpenLibrary, newest first.
   later that lacks it, and to update one that is old. It lives beside the Python version's bridge, which
   keeps working. It obeys only OpenLibrary: every request carries a token, kept encrypted for your Windows
   user.
-- **Catalogue a download.** *Catalogue…* opens a zip, rar, 7z (in parts and with a password too) or a folder, proposes
+- **Catalogue a download.** *Catalogue* opens a zip, rar, 7z (in parts and with a password too) or a folder, proposes
   which files are the `.max`, the preview and the textures, and saves them in a folder of the library under one
   name. Drag files between the lists, drop an image from a folder as the preview, or paste one copied in the browser.
   If asked, a 3ds Max in the background makes the Corona version of a V-Ray `.max` with the Corona Converter, and
