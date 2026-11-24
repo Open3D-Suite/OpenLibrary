@@ -64,6 +64,12 @@ pub fn load(src: &Path, cache_dir: &Path) -> Option<RgbaImage> {
     Some(rgba)
 }
 
+/// The image of a source, no larger than `side`; not cached.
+pub fn load_large(src: &Path, side: u32) -> Option<RgbaImage> {
+    let img = decode(src)?;
+    Some(if img.width().max(img.height()) > side { img.thumbnail(side, side) } else { img }.to_rgba8())
+}
+
 /// A thumbnail made by the loader: `None` when there is none to show.
 pub struct Loaded {
     pub key: String,
