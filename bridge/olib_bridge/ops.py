@@ -14,7 +14,7 @@ import pymxs
 from pymxs import runtime as rt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CORE_MS = os.path.join(HERE, "olib_core.ms")
+SCRIPTS = ("olib_core.ms", "olib_materials.ms")
 TEX_EXTS = {
     ".jpg",
     ".jpeg",
@@ -35,6 +35,22 @@ TEX_EXTS = {
     ".abc",
 }
 ENGINES = ("corona", "vray")
+TARGETS = ("selection", "cursor", "slate", "plane")
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".exr", ".tga", ".bmp", ".webp", ".hdr")
+CHANNELS = (
+    "color",
+    "rough",
+    "gloss",
+    "refl",
+    "metal",
+    "normal",
+    "normaldx",
+    "bump",
+    "disp",
+    "opacity",
+    "emission",
+    "transl",
+)
 IMPORT_KEYS = (
     "group",
     "layer_mode",
@@ -50,7 +66,8 @@ IMPORT_KEYS = (
 
 
 def load_core():
-    rt.fileIn(CORE_MS)
+    for name in SCRIPTS:
+        rt.fileIn(os.path.join(HERE, name))
 
 
 @contextlib.contextmanager
@@ -263,6 +280,276 @@ def merge_as_proxy(max_path, asset_name, engine, imp, proxy_dir, place=True, rel
             nodes = rt.olib_place(nodes, bool(imp.get("place_on_surface", True)), bool(imp.get("place_multiple", True)))
     rt.redrawViews()
     return len(nodes)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# What is under the mouse
+# ---------------------------------------------------------------------------------------------------------------
+class _Point(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+class _Rect(ctypes.Structure):
+    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+
+def _user32():
+    user32 = ctypes.windll.user32
+    user32.WindowFromPoint.restype = ctypes.c_void_p
+    user32.WindowFromPoint.argtypes = [_Point]
+    user32.GetAncestor.restype = ctypes.c_void_p
+    user32.GetAncestor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    user32.IsChild.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    user32.ScreenToClient.argtypes = [ctypes.c_void_p, ctypes.POINTER(_Point)]
+    user32.GetClientRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(_Rect)]
+    user32.GetWindowTextW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int]
+    return user32
+
+
+def _view_window(index):
+    """The window of a viewport, or None."""
+    try:
+        return int(rt.viewport.getHWnd(index=index)) or None
+    except (RuntimeError, TypeError, ValueError):
+        return None
+
+
+def look_at():
+    """What of 3ds Max is under the mouse: ("view", index, x, y, width, height), a viewport with the pixel inside
+    its window and the size of it (in Windows pixels); ("slate",), the Slate editor; or ("other",)."""
+    user32 = _user32()
+    point = _Point()
+    user32.GetCursorPos(ctypes.byref(point))
+    hwnd = user32.WindowFromPoint(point)
+    if not hwnd:
+        return ("other",)
+    for i in range(1, int(rt.viewport.numViews) + 1):
+        view = _view_window(i)
+        if view and (view == hwnd or user32.IsChild(view, hwnd)):
+            at = _Point(point.x, point.y)
+            user32.ScreenToClient(view, ctypes.byref(at))
+            box = _Rect()
+            user32.GetClientRect(view, ctypes.byref(box))
+            return ("view", i, at.x, at.y, box.right - box.left, box.bottom - box.top)
+    root = user32.GetAncestor(hwnd, 2) or hwnd
+    title = ctypes.create_unicode_buffer(256)
+    user32.GetWindowTextW(root, title, 256)
+    if "slate" in title.value.lower() or "material editor" in title.value.lower():
+        return ("slate",)
+    # out of the viewports and inside Slate's frame (docked in 3ds Max's window too)
+    return ("slate",) if bool(rt.olib_mouseOverSlate()) else ("other",)
+
+
+def _route(target):
+    """On a drop ("cursor"): over Slate, only to Slate; over a viewport, the object at that pixel (or, without
+    one, the selection)."""
+    if target not in TARGETS:
+        raise RuntimeError("The target is not valid.")
+    if target != "cursor":
+        return target
+    where = look_at()
+    if where[0] == "slate":
+        return "slate"
+    rt.olib_cursorHit = rt.olib_nodeAtView(*where[1:]) if where[0] == "view" else None
+    rt.olib_cursorKnown = True
+    return target
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Materials, textures and interiors
+# ---------------------------------------------------------------------------------------------------------------
+def _file(path, exts, what):
+    """A file of the library of the kind expected."""
+    if not isinstance(path, str) or os.path.splitext(path)[1].lower() not in exts or not os.path.isfile(path):
+        raise RuntimeError("The %s is not there: %s" % (what, path))
+    return path
+
+
+def _name(name):
+    if not isinstance(name, str) or not name.strip():
+        raise RuntimeError("The name is not valid.")
+    return name[:200]
+
+
+def _maps(maps):
+    """Only known channels, each with an image that is there."""
+    if not isinstance(maps, dict):
+        raise RuntimeError("The maps are not valid.")
+    return {k: _file(v, IMAGE_EXTS, "map") for k, v in maps.items() if k in CHANNELS and v}
+
+
+def _engine(engine):
+    return engine if engine in ("corona", "vray", "max") else str(rt.olib_sceneEngine())
+
+
+def _mapping(mapping):
+    return mapping if mapping in ("uv", "uvw", "realworld", "triplanar") else "uv"
+
+
+def _tex_mapping(mapping):
+    return mapping if mapping in ("triplanar", "realworld") else "uv"
+
+
+def _xyz(size):
+    """(width, length[, height]) in cm as three numbers; without a height, it is the length."""
+    values = [float(v) for v in (size or [100.0])][:3]
+    if not values or any(not 0.0 < v < 1e6 for v in values):
+        raise RuntimeError("The size is not valid.")
+    while len(values) < 3:
+        values.append(values[-1])
+    return values
+
+
+def _mxs_array(items):
+    out = rt.Array()
+    for item in items:
+        rt.append(out, item)
+    return out
+
+
+def _result(text):
+    where, count, name = str(text).split("|", 2)
+    return {"where": where, "count": int(count), "name": name}
+
+
+def _put(mats, target, mapping, size):
+    """Assigns, or takes to Slate. The mapping box is only added to objects, never in Slate."""
+    mode = {"uvw": "box", "realworld": "realworld"}.get(mapping, "") if target != "slate" else ""
+    result = _result(rt.olib_putMaterials(_mxs_array(mats), target, mode, *_xyz(size)))
+    rt.redrawViews()
+    return result
+
+
+def check_drop(target="cursor", names=()):
+    """Before a material is put: where it goes (a drop looks now at what is under the mouse, and keeps it for the
+    next command) and which of those names the scene, the editor or Slate have."""
+    route = _route(target)
+    return {
+        "route": route,
+        "existing": [n for n in names if isinstance(n, str) and rt.olib_findMaterial(n) is not None],
+    }
+
+
+def _pbr(name, maps, engine, mapping, size, displacement, existing):
+    """The material asked for: the one the scene has by that name (existing "use") or a new one."""
+    name = _name(name)
+    if existing == "use":
+        found = rt.olib_findMaterial(name)
+        if found is not None:
+            return found
+    maps = _maps(maps)
+    if not maps:
+        raise RuntimeError("The material has no maps.")
+    spec = "|".join("%s=%s" % item for item in maps.items())
+    x, y, _z = _xyz(size)
+    return rt.olib_pbrMaterial(name, _engine(engine), spec, _tex_mapping(mapping), x, y, bool(displacement))
+
+
+def apply_material(
+    name,
+    maps,
+    engine="auto",
+    mapping="uv",
+    size=(100, 100),
+    displacement=False,
+    target="selection",
+    existing="new",
+    routed=False,
+):
+    """Makes the material and deals it out. mapping: "uv", "uvw" (a box of X, Y, Z cm), "realworld" or "triplanar".
+    routed: check_drop has looked at the target already (the mouse is not looked at again)."""
+    target = target if routed and target in TARGETS else _route(target)
+    mapping = _mapping(mapping)
+    focus_max()
+    with _undo("OpenLibrary: material " + _name(name)):
+        material = _pbr(name, maps, engine, mapping, size, displacement, existing)
+        if target == "slate":
+            added = int(rt.olib_slateShow(_mxs_array([material])))
+            return {"where": "slate", "count": 1, "name": str(material.name), "added": added}
+        return _put([material], target, mapping, size)
+
+
+def apply_materials(items, engine="auto", displacement=False, existing="use"):
+    """Several materials to Slate. items: [{"name", "maps", "mapping", "size"}]. Those the scene has by that name
+    are looked for and selected (existing "use")."""
+    if not isinstance(items, list) or not items:
+        raise RuntimeError("There are no materials.")
+    focus_max()
+    with _undo("OpenLibrary: materials"):
+        mats = [
+            _pbr(
+                item.get("name"),
+                item.get("maps"),
+                engine,
+                _mapping(item.get("mapping")),
+                item.get("size"),
+                displacement,
+                existing,
+            )
+            for item in items[:60]
+            if isinstance(item, dict)
+        ]
+        added = int(rt.olib_slateShow(_mxs_array(mats)))
+    return {"where": "slate", "count": len(mats), "name": str(mats[0].name) if len(mats) == 1 else "", "added": added}
+
+
+def apply_library(mat_file, target="selection"):
+    """The materials of a .mat library: to Slate, all of them; to the objects, the first."""
+    mat_file = _file(mat_file, (".mat",), "library")
+    target = _route(target)
+    mats = list(rt.olib_matLibMaterials(mat_file))
+    if not mats:
+        raise RuntimeError("No material could be read from %s" % os.path.basename(mat_file))
+    focus_max()
+    with _undo("OpenLibrary: material " + os.path.basename(mat_file)):
+        result = _put(mats[:24], target, "uv", (100,))
+    result["library"] = len(mats)
+    return result
+
+
+def add_textures(files, roles=None, engine="auto", mapping="uv", size=(100, 100), target="slate"):
+    """Loose textures: as maps in Slate, or the first one as a quick material on objects."""
+    if not isinstance(files, list) or not files:
+        raise RuntimeError("There are no textures.")
+    files = [_file(f, IMAGE_EXTS, "texture") for f in files[:40]]
+    roles = roles if isinstance(roles, list) else []
+    roles = (roles + ["color"] * len(files))[: len(files)]
+    mapping = _mapping(mapping)
+    target = _route(target)
+    if target != "slate":
+        channel = "normal" if roles[0] == "normal" else "color"
+        name = os.path.splitext(os.path.basename(files[0]))[0]
+        return apply_material(name, {channel: files[0]}, engine, mapping, size, False, target, routed=True)
+    focus_max()
+    eng = _engine(engine)
+    x, y, _z = _xyz(size)
+    with _undo("OpenLibrary: textures"):
+        nodes = [
+            rt.olib_texNode(f, eng, "color" if role == "color" else "data", _tex_mapping(mapping), x, y)
+            for f, role in zip(files, roles, strict=True)
+        ]
+        count = int(rt.olib_toSlate(_mxs_array(nodes)))
+    return {"where": "slate", "count": count, "name": ""}
+
+
+def apply_interior(
+    name, exr, osl, preview="", size_code="S", width=350.0, height=350.0, engine="auto", depth=-1, target="cursor"
+):
+    """A room: a material with the OSL that reads the EXR, for the object under the mouse, the selection, Slate or a
+    new plane (target "plane", or "cursor" without objects)."""
+    exr = _file(exr, (".exr",), "EXR")
+    osl = _file(osl, (".osl",), "OSL shader")
+    preview = _file(preview, IMAGE_EXTS, "preview") if preview else ""
+    if size_code not in ("S", "M", "L") or not -1 <= int(depth) <= 8:
+        raise RuntimeError("The window is not valid.")
+    width, height, _z = _xyz((width, height))
+    target = _route(target)
+    focus_max()
+    with _undo("OpenLibrary: interior " + _name(name)):
+        material = rt.olib_interiorMaterial(_name(name), _engine(engine), osl, exr, preview, size_code, int(depth))
+        result = _result(rt.olib_putInterior(material, target, width, height))
+    rt.redrawViews()
+    return result
 
 
 # ---------------------------------------------------------------------------------------------------------------
