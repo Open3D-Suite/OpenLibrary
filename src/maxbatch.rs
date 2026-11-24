@@ -16,6 +16,9 @@ const CORE: &[u8] = include_bytes!("../bridge/olib_bridge/olib_core.ms");
 const BATCH: &[u8] = include_bytes!("../bridge/olib_batch.ms");
 /// Set for the 3ds Max in the background, so that a bridge installed in it does not start.
 const VARIABLE: &str = "OPENLIBRARY_BATCH";
+/// Scripts that come inside a scene may not run commands of the system, Python or .NET, nor write scripts, whatever
+/// the person's own 3ds Max is set to. `olib_batch.ms` does nothing without it.
+const SAFE: [&str; 2] = ["-safescene", "on"];
 /// What 3ds Max may take to start, besides the first file.
 const STARTUP: Duration = Duration::from_secs(120);
 const POLL: Duration = Duration::from_millis(500);
@@ -105,8 +108,14 @@ fn installs(variables: impl Iterator<Item = (String, String)>, program_files: &[
 /// `3dsmaxbatch.exe` of the newest 3ds Max installed.
 pub fn find() -> Option<PathBuf> {
     let program_files: Vec<PathBuf> = ["ProgramFiles", "ProgramW6432"].iter().filter_map(std::env::var_os).map(PathBuf::from).collect();
+    // the oldest 3ds Max the app supports
+    let supported = |year: &u32| *year >= crate::bridge_install::MIN_YEAR;
     let variables = std::env::vars_os().filter_map(|(n, v)| Some((n.into_string().ok()?, v.into_string().ok()?)));
-    installs(variables, &program_files).into_iter().map(|(_, dir)| dir.join("3dsmaxbatch.exe")).find(|exe| exe.is_file())
+    installs(variables, &program_files)
+        .into_iter()
+        .filter(|(year, _)| supported(year))
+        .map(|(_, dir)| dir.join("3dsmaxbatch.exe"))
+        .find(|exe| exe.is_file())
 }
 
 /// A path in a MAXScript text: forward slashes, and no quote (Windows allows none in a name).
@@ -164,7 +173,7 @@ fn read_log(log: &Path) -> Vec<Outcome> {
 
 fn start(maxbatch: &Path, script: &Path) -> io::Result<Box<dyn Process>> {
     let mut command = Command::new(maxbatch);
-    command.arg(script).env(VARIABLE, "1");
+    command.args(SAFE).arg(script).env(VARIABLE, "1");
     Ok(Box::new(MaxProcess(quiet(&mut command).spawn()?)))
 }
 
@@ -338,6 +347,7 @@ mod tests {
             assert!(text.contains(&format!("fn {name} ")), "{name}");
         }
         assert!(BATCH.starts_with(&[0xEF, 0xBB, 0xBF]), "3ds Max reads it as UTF-8 by its BOM");
+        assert!(text.contains("if not (SceneScriptSecurityManager.IsSafeSceneScriptExecutionEnabled #Current) do"), "it works only in safe mode");
         let startup = String::from_utf8_lossy(crate::bridge_install::STARTUP).into_owned();
         assert!(startup.contains(&format!("systemTools.getEnvVariable \"{VARIABLE}\"")), "the bridge stays off in the background");
     }

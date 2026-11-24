@@ -50,5 +50,4 @@ def token(data=None):
         except (ValueError, OSError):
             plain = None
         return plain.decode("ascii", "replace") if plain else ""
-    plain = data.get("token")  # only the tests write it in clear
-    return plain if isinstance(plain, str) else ""
+    return ""

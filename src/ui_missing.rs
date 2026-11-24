@@ -35,6 +35,7 @@ enum Ask {
 pub struct MissingWindow {
     name: String,
     files: Vec<PathBuf>,
+    roots: Vec<PathBuf>,
     work_dir: PathBuf,
     rows: Vec<Row>,
     task: Option<Task<Event>>,
@@ -57,11 +58,12 @@ pub struct Answer {
 }
 
 impl MissingWindow {
-    pub fn new(name: &str, files: Vec<PathBuf>, data_dir: &Path, lang: Language, wake: Wake) -> Self {
+    pub fn new(name: &str, (files, roots): (Vec<PathBuf>, Vec<PathBuf>), data_dir: &Path, lang: Language, wake: Wake) -> Self {
         let last_dir = files.first().and_then(|f| f.parent()).map(Path::to_path_buf).unwrap_or_default();
         let mut window = Self {
             name: name.to_string(),
             files,
+            roots,
             work_dir: data_dir.join("batch").join(format!("paths-{}", std::process::id())),
             rows: Vec::new(),
             task: None,
@@ -83,11 +85,11 @@ impl MissingWindow {
     }
 
     fn read(&mut self) {
-        let files = self.files.clone();
+        let (files, roots) = (self.files.clone(), self.roots.clone());
         self.task = Some(Task::start(self.wake.clone(), move |link| {
             let mut rows = Vec::new();
             for file in files {
-                for e in missing::externals(&file).into_iter().filter(|e| e.state != State::Found) {
+                for e in missing::externals(&file, &roots).into_iter().filter(|e| e.state != State::Found) {
                     rows.push(Row { file: file.clone(), kind: e.kind, stored: e.stored, state: e.state, change: None, selected: false });
                 }
             }

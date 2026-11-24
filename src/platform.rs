@@ -247,6 +247,45 @@ pub fn clipboard_dib() -> Option<Vec<u8>> {
     }
 }
 
+// `unsafe` is allowed here because these declare Windows' own functions: the drives' shares, for `mapped_shares`.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+#[link(name = "mpr")]
+unsafe extern "system" {
+    fn WNetGetConnectionW(local: *const u16, remote: *mut u16, length: *mut u32) -> u32;
+}
+
+/// The network shares the drive letters of this computer are.
+// `unsafe` is allowed here because this function calls Windows itself (WNetGetConnectionW).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn mapped_shares() -> Vec<String> {
+    let share = |letter: u8| {
+        let local = [u16::from(letter), u16::from(b':'), 0];
+        let mut remote = [0u16; 1024];
+        let mut length = 1024u32;
+        // SAFETY: `local` ends in a zero, `remote` has the `length` letters it says, and both outlive the call.
+        let status = unsafe { WNetGetConnectionW(local.as_ptr(), remote.as_mut_ptr(), &mut length) };
+        let end = remote.iter().position(|c| *c == 0).unwrap_or(0);
+        (status == 0 && end > 0).then(|| String::from_utf16_lossy(&remote[..end]))
+    };
+    (b'A'..=b'Z').filter_map(share).collect()
+}
+
+/// Shows a folder in Explorer, or a file selected in its folder.
+pub fn reveal(path: &std::path::Path) {
+    let root = std::env::var_os("SystemRoot").map_or_else(|| std::path::PathBuf::from("C:/Windows"), std::path::PathBuf::from);
+    let mut command = std::process::Command::new(root.join("explorer.exe"));
+    // Explorer reads its own command line: the path goes in quotes, which no path of Windows has in it
+    let text = path.display().to_string().replace('"', "");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.raw_arg(if path.is_dir() { format!("\"{text}\"") } else { format!("/select,\"{text}\"") });
+    }
+    let _ = command.spawn(); // without Explorer there is nothing to show
+}
+
 /// A program of Windows itself, by its whole path, so that no other program of that name runs instead.
 pub fn system_program(name: &str) -> std::path::PathBuf {
     let root = std::env::var_os("SystemRoot").map_or_else(|| std::path::PathBuf::from("C:/Windows"), std::path::PathBuf::from);
@@ -256,6 +295,11 @@ pub fn system_program(name: &str) -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_shares_of_the_drives_are_network_paths() {
+        assert!(mapped_shares().iter().all(|s| s.starts_with("\\\\")));
+    }
 
     #[test]
     fn random_bytes_differ() {

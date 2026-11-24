@@ -280,7 +280,7 @@ impl SideTree {
                 return out;
             }
             Some(Done::Reveal(path)) => {
-                let _ = std::process::Command::new("explorer").arg(path).spawn();
+                crate::platform::reveal(&path);
                 return out;
             }
             Some(Done::Mark(path, what, value)) => foldericons::set_mark(settings, &path, what, value),

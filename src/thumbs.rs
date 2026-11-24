@@ -33,7 +33,12 @@ pub fn cache_file(cache_dir: &Path, src: &Path) -> PathBuf {
     cache_dir.join(format!("{hash:016x}.jpg"))
 }
 
+/// Decodes an image; one that breaks its decoder has no thumbnail, and the threads go on.
 fn decode(src: &Path) -> Option<DynamicImage> {
+    std::panic::catch_unwind(|| decode_file(src)).ok().flatten()
+}
+
+fn decode_file(src: &Path) -> Option<DynamicImage> {
     let is_max = src.extension().is_some_and(|e| e.eq_ignore_ascii_case(crate::library::MAX_EXT));
     if is_max {
         let bmp = maxfile::embedded_thumbnail(src)?;

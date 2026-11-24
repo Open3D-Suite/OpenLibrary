@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import sys
 import tempfile
 import types
@@ -30,18 +31,24 @@ _stand_ins()
 from olib_bridge import config, ops, server  # noqa: E402 - after the stand-ins
 
 
+def sealed(token):
+    """A token as app.json has it, with the stand-in of DPAPI below."""
+    return token.encode("ascii")[::-1].hex()
+
+
 class ServerTests(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         self.app_json = os.path.join(self.dir, "app.json")
         with open(self.app_json, "w", encoding="utf-8") as fh:
-            json.dump({"token": "secret-token", "command": []}, fh)
-        self.old_path = config.APP_JSON
+            json.dump({"token_dpapi": sealed("secret-token"), "command": []}, fh)
+        self.old_path, self.old_unprotect = config.APP_JSON, config._unprotect
+        config._unprotect = lambda data: data[::-1]  # stands in for DPAPI
         config.APP_JSON = self.app_json
         server._token["value"] = ""
 
     def tearDown(self):
-        config.APP_JSON = self.old_path
+        config.APP_JSON, config._unprotect = self.old_path, self.old_unprotect
 
     def ask(self, request):
         raw = request if isinstance(request, bytes) else json.dumps(request).encode("utf-8")
@@ -75,7 +82,7 @@ class ServerTests(unittest.TestCase):
     def test_a_new_token_is_read_again(self):
         self.assertTrue(self.ask({"cmd": "ping", "token": "secret-token"})[0]["ok"])
         with open(self.app_json, "w", encoding="utf-8") as fh:
-            json.dump({"token": "new-token"}, fh)
+            json.dump({"token_dpapi": sealed("new-token")}, fh)
         self.assertTrue(self.ask({"cmd": "ping", "token": "new-token"})[0]["ok"])
         self.assertFalse(self.ask({"cmd": "ping", "token": "secret-token"})[0]["ok"])
 
@@ -90,7 +97,7 @@ class TokenTests(unittest.TestCase):
         self.assertEqual(config.token({"token_dpapi": "00ff"}), "")
         self.assertEqual(config.token({"token_dpapi": "not hex"}), "")
         self.assertEqual(config.token({}), "")
-        self.assertEqual(config.token({"token": "plain"}), "plain")
+        self.assertEqual(config.token({"token": "plain"}), "")  # never in clear
 
 
 class MaterialArgumentTests(unittest.TestCase):
@@ -118,6 +125,43 @@ class MaterialArgumentTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             ops._route("anywhere")
         self.assertEqual(ops._route("slate"), "slate")
+
+
+class TextIsNeverCodeTests(unittest.TestCase):
+    """Every place of the bridge that could run a text or a file as code; a new one has to be added here."""
+
+    KNOWN = {
+        # the Corona Converter that comes with Corona, from Program Files
+        ("olib_batch.ms", "fileIn script"),
+        # the bridge's own files
+        ("open3d_openlibrary.ms", 'try ( fileIn (root + "\\olib_bridge\\olib_launch.mcr") ) catch ()'),
+        ("ops.py", "rt.fileIn(os.path.join(HERE, name))"),
+        # the app, whose path app.json has
+        (
+            "__init__.py",
+            "subprocess.Popen([exe], close_fds=True, cwd=os.path.dirname(exe), "
+            "creationflags=subprocess.DETACHED_PROCESS)  # noqa: S603",
+        ),
+    }
+
+    def test_the_places_are_the_known_ones(self):
+        word = re.compile(
+            r"\b(execute\s|execute\(|fileIn|eval\(|exec\(|compile\(|subprocess\.\w+\(|os\.system|pickle|DOSCommand|"
+            r"ShellLaunch|HiddenDOSCommand|loadDllsFromDir|python\.execute\w*)",
+            re.IGNORECASE,
+        )
+        found = set()
+        bridge = os.path.dirname(HERE)
+        for folder, dirs, files in os.walk(bridge):
+            dirs[:] = [d for d in dirs if d not in ("tests", "__pycache__")]
+            for name in files:
+                with open(os.path.join(folder, name), encoding="utf-8-sig") as fh:  # valid UTF-8, all of them
+                    for line in fh:
+                        code = line.strip()
+                        comment = code.startswith(("--", "#"))
+                        if not comment and word.search(code) and not code.startswith("on execute do"):
+                            found.add((name, code))
+        self.assertEqual(found, self.KNOWN)
 
 
 if __name__ == "__main__":

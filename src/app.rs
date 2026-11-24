@@ -50,7 +50,8 @@ enum Snapshot {
 /// What the background reader of `.max` files works on, and what it sends back.
 enum Job {
     Engine(PathBuf),
-    Files(PathBuf),
+    /// A `.max`, and the folders of the libraries.
+    Files(PathBuf, Vec<PathBuf>),
 }
 
 enum Found {
@@ -59,8 +60,8 @@ enum Found {
 }
 
 /// The files of one `.max` that are not where it says: (all of them, missing).
-fn count_missing(max: &Path) -> (usize, usize) {
-    let externals = missing::externals(max);
+fn count_missing(max: &Path, roots: &[PathBuf]) -> (usize, usize) {
+    let externals = missing::externals(max, roots);
     let missing = externals.iter().filter(|e| e.state != missing::State::Found).count();
     (externals.len(), missing)
 }
@@ -383,6 +384,11 @@ impl OpenLibraryApp {
                 self.tools(ui);
             }
         });
+    }
+
+    /// The folders of every tab.
+    fn all_roots(&self) -> Vec<PathBuf> {
+        (0..self.settings.libraries().len()).flat_map(|i| self.settings.library_paths(i)).collect()
     }
 
     /// How the tab of this moment shows its folders and favourites.
@@ -864,7 +870,7 @@ impl OpenLibraryApp {
                     }
                     None => {
                         if self.asked.insert(file.with_extension("files")) {
-                            let _ = self.jobs.send(Job::Files(file.to_path_buf()));
+                            let _ = self.jobs.send(Job::Files(file.to_path_buf(), self.all_roots()));
                         }
                         ui.label(self.t(Text::EnginePending));
                     }
@@ -878,7 +884,7 @@ impl OpenLibraryApp {
             ui.add_space(10.0);
             if ui.button(self.t(Text::OpenFolder)).clicked() {
                 let target = asset.any_file().map_or_else(|| asset.folder.clone(), Path::to_path_buf);
-                let _ = std::process::Command::new("explorer").arg(format!("/select,{}", target.display())).spawn();
+                crate::platform::reveal(&target);
             }
         });
     }
@@ -903,8 +909,8 @@ fn spawn_reader(engines: Arc<EngineCache>, wake: Arc<dyn Fn() + Send + Sync>) ->
                         engines.detect(&path);
                         Found::Engine
                     }
-                    Job::Files(path) => {
-                        let (total, missing) = count_missing(&path);
+                    Job::Files(path, roots) => {
+                        let (total, missing) = count_missing(&path, &roots);
                         Found::Files(path, total, missing)
                     }
                 };

@@ -15,6 +15,12 @@
 fn olib_jobLines jobsFile =
 (
     local jobs = #()
+    -- files of a download come from anybody: their scripts must not be able to do harm
+    if not (SceneScriptSecurityManager.IsSafeSceneScriptExecutionEnabled #Current) do
+    (
+        format "OpenLibrary: Safe Scene Script Execution is off: nothing is opened\n"
+        return jobs
+    )
     local jf = openFile jobsFile mode:"r"
     while not (eof jf) do
     (

@@ -12,6 +12,8 @@ use std::time::Duration;
 
 /// The extensions of the file dialog.
 pub const EXTENSIONS: [&str; 11] = ["zip", "rar", "7z", "001", "r00", "z01", "tar", "gz", "tgz", "bz2", "xz"];
+/// What a download may take once extracted: more is no model, and would fill the disk.
+const MAX_BYTES: u64 = 60 << 30;
 /// 7-Zip asks on the keyboard when it is given no password.
 const NO_PASSWORD: &str = "-no-password-";
 
@@ -26,6 +28,8 @@ pub enum ArchiveError {
     /// A part is missing, or the download was cut short.
     Incomplete,
     Cancelled,
+    /// It grows past [`MAX_BYTES`].
+    TooLarge,
     Failed(String),
 }
 
@@ -232,6 +236,21 @@ fn last_errors(output: &str) -> String {
     chosen[chosen.len().saturating_sub(4)..].join("\n")
 }
 
+/// Whether the files under a folder take more than `limit`.
+fn larger_than(folder: &Path, limit: u64) -> bool {
+    let (mut total, mut pending) = (0u64, vec![folder.to_path_buf()]);
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            match entry.metadata() {
+                Ok(meta) if meta.is_dir() => pending.push(entry.path()),
+                Ok(meta) => total = total.saturating_add(meta.len()),
+                Err(_) => {}
+            }
+        }
+    }
+    total > limit
+}
+
 /// Extracts everything into `dest`, a new folder. WinRAR only opens rar: for the rest, the tar of Windows.
 pub fn extract(path: &Path, dest: &Path, password: Option<&str>, cancelled: &dyn Fn() -> bool) -> Result<(), ArchiveError> {
     let Some((mut kind, mut exe)) = find_tool() else { return Err(ArchiveError::NoTool) };
@@ -249,16 +268,25 @@ pub fn extract(path: &Path, dest: &Path, password: Option<&str>, cancelled: &dyn
     let mut command = Command::new(exe);
     quiet(&mut command).args(arguments(kind, path, dest, password)).stdout(Stdio::from(out)).stderr(Stdio::from(err));
     let mut child = command.spawn().map_err(failed)?;
+    let mut tick = 0u32;
     let code = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status.code(),
-            Ok(None) if cancelled() => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = std::fs::remove_file(&log);
-                return Err(ArchiveError::Cancelled);
+            Ok(None) => {
+                std::thread::sleep(Duration::from_millis(100));
+                tick += 1;
+                let stop = if cancelled() {
+                    Some(ArchiveError::Cancelled)
+                } else {
+                    (tick.is_multiple_of(30) && larger_than(dest, MAX_BYTES)).then_some(ArchiveError::TooLarge)
+                };
+                if let Some(error) = stop {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_file(&log);
+                    return Err(error);
+                }
             }
-            Ok(None) => std::thread::sleep(Duration::from_millis(100)),
             Err(e) => return Err(failed(e)),
         }
     };
@@ -316,6 +344,15 @@ mod tests {
         assert_eq!(verdict(Kind::SevenZip, Some(2), "ERROR: Missing volume", false), Err(ArchiveError::Incomplete));
         assert_eq!(verdict(Kind::Tar, Some(1), "Encrypted file is unsupported", false), Err(ArchiveError::NoTool));
         assert_eq!(verdict(Kind::SevenZip, Some(2), "Scanning\nERROR: bad\n", false), Err(ArchiveError::Failed("ERROR: bad".into())));
+    }
+
+    #[test]
+    fn what_is_extracted_is_measured() {
+        let dir = std::env::temp_dir().join(format!("openlibrary-archives-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("a")).unwrap();
+        std::fs::write(dir.join("a").join("b"), [0; 100]).unwrap();
+        assert!(larger_than(&dir, 99) && !larger_than(&dir, 100));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

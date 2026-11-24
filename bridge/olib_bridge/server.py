@@ -162,9 +162,14 @@ def answer(raw):
 
 
 class _Handler(socketserver.StreamRequestHandler):
+    timeout = 60  # a connection that says nothing does not stay
+
     def handle(self):
         while True:
-            raw = self.rfile.readline(MAX_LINE)
+            try:
+                raw = self.rfile.readline(MAX_LINE)
+            except OSError:
+                return
             if not raw:
                 return
             response, go_on = answer(raw)

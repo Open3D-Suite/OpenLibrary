@@ -710,7 +710,7 @@ impl SurfacePanel {
         }
         ui.add_space(8.0);
         if ui.button(self.t(Text::OpenFolder)).clicked() {
-            let _ = std::process::Command::new("explorer").arg(format!("/select,{}", item.file().display())).spawn();
+            crate::platform::reveal(&item.file());
         }
     }
 

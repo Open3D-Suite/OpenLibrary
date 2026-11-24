@@ -15,8 +15,10 @@ const SIGNATURE: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 const FREESECT: u32 = 0xFFFF_FFFF;
 const ENDOFCHAIN: u32 = 0xFFFF_FFFE;
 const MAXREGSECT: u32 = 0xFFFF_FFFA;
-/// Longest chain followed, in sectors: a corrupt file never makes the reader loop for ever.
-const MAX_CHAIN: usize = 10_000_000;
+/// The directory and the table of small sectors are never larger.
+const MAX_TABLE: u64 = 16 << 20;
+/// Streams smaller than this are in small sectors.
+const MINI_CUTOFF: u64 = 4096;
 
 /// What went wrong while reading a compound file.
 #[derive(Debug)]
@@ -46,7 +48,8 @@ pub struct CompoundFile<R: Read + Seek> {
     reader: R,
     sector_size: usize,
     mini_size: usize,
-    mini_cutoff: u64,
+    /// How many sectors the file has: no chain is longer, and none points past them.
+    sectors: u64,
     first_dir: u32,
     first_minifat: u32,
     n_minifat: u32,
@@ -94,15 +97,16 @@ impl<R: Read + Seek> CompoundFile<R> {
         if shift != 9 && shift != 12 {
             return Err(CfbError::Corrupt("sector size"));
         }
-        if mini_shift > 12 {
+        if mini_shift != 6 {
             return Err(CfbError::Corrupt("mini sector size"));
         }
+        let length = reader.seek(SeekFrom::End(0))?;
         let field = |at| u32_at(&header, at).unwrap_or(0);
         let mut cf = Self {
             reader,
             sector_size: 1 << shift,
             mini_size: 1 << mini_shift,
-            mini_cutoff: u64::from(field(0x38)),
+            sectors: length.div_ceil(1 << shift),
             first_dir: field(0x30),
             first_minifat: field(0x3C),
             n_minifat: field(0x40),
@@ -121,18 +125,21 @@ impl<R: Read + Seek> CompoundFile<R> {
             fat_sectors.extend_from_slice(body);
             sect = *last;
             guard += 1;
-            if guard > 100_000 {
+            if guard > cf.sectors {
                 return Err(CfbError::Corrupt("DIFAT chain"));
             }
         }
         fat_sectors.truncate(n_fat);
-        fat_sectors.retain(|s| *s <= MAXREGSECT);
+        fat_sectors.retain(|s| u64::from(*s) < cf.sectors);
         cf.fat_cache = vec![None; fat_sectors.len()];
         cf.fat_sectors = fat_sectors;
         Ok(cf)
     }
 
     fn sector(&mut self, n: u32) -> Result<Vec<u8>, CfbError> {
+        if u64::from(n) >= self.sectors {
+            return Err(CfbError::Corrupt("sector"));
+        }
         let mut data = vec![0u8; self.sector_size];
         self.reader.seek(SeekFrom::Start((u64::from(n) + 1) * self.sector_size as u64))?;
         let mut got = 0;
@@ -170,7 +177,7 @@ impl<R: Read + Seek> CompoundFile<R> {
             }
             sect = self.fat(sect)?;
             steps += 1;
-            if steps > MAX_CHAIN {
+            if steps > self.sectors {
                 return Err(CfbError::Corrupt("FAT chain"));
             }
         }
@@ -180,7 +187,7 @@ impl<R: Read + Seek> CompoundFile<R> {
     /// Every entry of the directory, `None` for the unused ones.
     pub fn entries(&mut self) -> Result<&[Option<Entry>], CfbError> {
         if self.entries.is_none() {
-            let raw = self.chain(self.first_dir, None)?;
+            let raw = self.chain(self.first_dir, Some(MAX_TABLE))?;
             let small = self.sector_size == 512;
             let entries = raw
                 .as_chunks::<128>()
@@ -210,7 +217,7 @@ impl<R: Read + Seek> CompoundFile<R> {
     fn mini_stream(&mut self, start: u32, size: u64) -> Result<Vec<u8>, CfbError> {
         let root_start = self.entries()?.first().and_then(|e| e.as_ref()).map(|e| e.start).ok_or(CfbError::Corrupt("root"))?;
         if self.minifat.is_none() {
-            let raw = if self.n_minifat > 0 { self.chain(self.first_minifat, None)? } else { Vec::new() };
+            let raw = if self.n_minifat > 0 { self.chain(self.first_minifat, Some(MAX_TABLE))? } else { Vec::new() };
             self.minifat = Some(words(&raw));
         }
         let per_big = self.sector_size / self.mini_size;
@@ -225,7 +232,7 @@ impl<R: Read + Seek> CompoundFile<R> {
                     None => root_start,
                     Some(prev) => self.fat(*prev)?,
                 };
-                if next > MAXREGSECT || root_chain.len() > MAX_CHAIN {
+                if next > MAXREGSECT || root_chain.len() as u64 > self.sectors {
                     return Err(CfbError::Corrupt("mini stream"));
                 }
                 root_chain.push(next);
@@ -243,7 +250,7 @@ impl<R: Read + Seek> CompoundFile<R> {
         let found = self.entries()?.iter().flatten().find(|e| e.kind == 2 && e.name == name).cloned();
         let Some(entry) = found else { return Ok(None) };
         let size = entry.size.min(max_bytes);
-        let mut data = if entry.size < self.mini_cutoff { self.mini_stream(entry.start, size)? } else { self.chain(entry.start, Some(size))? };
+        let mut data = if entry.size < MINI_CUTOFF { self.mini_stream(entry.start, size)? } else { self.chain(entry.start, Some(size))? };
         data.truncate(size as usize);
         Ok(Some(data))
     }
@@ -366,7 +373,7 @@ pub fn dib_to_bmp(dib: &[u8]) -> Option<Vec<u8>> {
         0
     };
     let masks = if compression == 3 && header_size == 40 { 12 } else { 0 };
-    let offset = 14 + header_size + masks + colors * 4;
+    let offset = colors.checked_mul(4)?.checked_add(header_size)?.checked_add(14 + masks)?;
     let size = u32::try_from(14 + dib.len()).ok()?;
     let mut bmp = Vec::with_capacity(dib.len() + 14);
     bmp.extend_from_slice(b"BM");
@@ -672,6 +679,28 @@ mod tests {
 
     fn open(bytes: Vec<u8>) -> CompoundFile<Cursor<Vec<u8>>> {
         CompoundFile::new(Cursor::new(bytes)).expect("a valid compound file")
+    }
+
+    #[test]
+    fn a_chain_that_bites_its_tail_is_refused_at_once() {
+        let good = testing::compound(&[("Big", &[7u8; 9000])]);
+        let open = |data: Vec<u8>| CompoundFile::new(std::io::Cursor::new(data));
+        // every entry of the first FAT sector points at itself
+        let mut bad = good.clone();
+        let fat = (u32_at(&good, 0x4C).unwrap() as usize + 1) * 512;
+        for (i, entry) in bad[fat..fat + 512].as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            entry.copy_from_slice(&u32::try_from(i).unwrap().to_le_bytes());
+        }
+        let start = std::time::Instant::now();
+        assert!(open(bad).unwrap().read_stream("Big", 8 << 20).is_err());
+        assert!(start.elapsed().as_secs() < 5);
+        // small sectors larger than the large ones, and a directory past the end
+        let mut bad = good.clone();
+        bad[0x20] = 12;
+        assert!(open(bad).is_err());
+        let mut bad = good;
+        bad[0x30..0x34].copy_from_slice(&0x00FF_FFFFu32.to_le_bytes());
+        assert!(open(bad).unwrap().entries().is_err());
     }
 
     #[test]

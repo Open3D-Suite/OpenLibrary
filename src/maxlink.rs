@@ -218,10 +218,8 @@ mod tests {
 
     #[test]
     fn nobody_listening() {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        assert_eq!(call(port, "x", "ping", json!({}), None), Err(MaxError::NotThere));
+        // no program listens on port 1; one just freed may be taken by another test
+        assert_eq!(call(1, "x", "ping", json!({}), None), Err(MaxError::NotThere));
     }
 
     #[test]
