@@ -70,7 +70,7 @@ fn preview_job(jobs: &[PreviewJob], settings: Option<&Value>) -> Job {
         function: "olib_batchPreviews",
         arguments: vec![number("size", 512.0).round(), number("margin", 1.15), number("elevation", 20.0), number("azimuth", 35.0)],
         lines: jobs.iter().map(|j| vec![j.file.display().to_string(), j.out.display().to_string()]).collect(),
-        stall: Duration::from_secs(600),
+        stall: Duration::from_secs(300),
     }
 }
 
