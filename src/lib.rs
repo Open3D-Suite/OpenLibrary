@@ -4,16 +4,24 @@
 //! What the program does lives here, where the tests reach it; `main.rs` only reads the arguments.
 
 pub mod app;
+pub mod archives;
 pub mod bridge_install;
+pub mod catalog;
 pub mod library;
 pub mod max_session;
+pub mod maxbatch;
 pub mod maxfile;
 pub mod maxlink;
+pub mod missing;
+pub mod modelstats;
 pub mod open3d_settings;
 pub mod platform;
 pub mod settings;
+pub mod task;
 pub mod texts;
 pub mod thumbs;
+pub mod ui_catalog;
+pub mod ui_missing;
 
 /// The app's name, as the Open3D launcher shows it and as its folders are called.
 pub const APP: &str = "OpenLibrary";

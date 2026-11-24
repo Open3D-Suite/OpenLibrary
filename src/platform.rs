@@ -201,6 +201,58 @@ pub fn allow_foreground(pid: u32) {
     }
 }
 
+// `unsafe` is allowed here because these declare Windows' own functions: the clipboard, for `clipboard_dib`.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn OpenClipboard(window: *mut std::ffi::c_void) -> i32;
+    fn CloseClipboard() -> i32;
+    fn GetClipboardData(format: u32) -> *mut std::ffi::c_void;
+}
+
+// `unsafe` is allowed here because these declare Windows' own functions: the clipboard's memory, for `clipboard_dib`.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn GlobalLock(memory: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+    fn GlobalUnlock(memory: *mut std::ffi::c_void) -> i32;
+    fn GlobalSize(memory: *mut std::ffi::c_void) -> usize;
+}
+
+/// The image in the clipboard, as a DIB, when it holds one (the browsers' "Copy image" leaves it).
+// `unsafe` is allowed here because this function calls Windows itself (the clipboard and its memory).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn clipboard_dib() -> Option<Vec<u8>> {
+    const CF_DIB: u32 = 8;
+    // SAFETY: the clipboard is open while its memory is read, which is copied up to the size Windows gives for
+    // it; a null handle or pointer is checked before it is used, and both are let go before returning.
+    unsafe {
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return None;
+        }
+        let memory = GetClipboardData(CF_DIB);
+        let mut out = None;
+        if !memory.is_null() {
+            let data = GlobalLock(memory);
+            if !data.is_null() {
+                out = Some(std::slice::from_raw_parts(data.cast::<u8>(), GlobalSize(memory)).to_vec());
+                GlobalUnlock(memory);
+            }
+        }
+        CloseClipboard();
+        out
+    }
+}
+
+/// A program of Windows itself, by its whole path, so that no other program of that name runs instead.
+pub fn system_program(name: &str) -> std::path::PathBuf {
+    let root = std::env::var_os("SystemRoot").map_or_else(|| std::path::PathBuf::from("C:/Windows"), std::path::PathBuf::from);
+    root.join("System32").join(name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
