@@ -264,7 +264,9 @@ fn olib_pbrMaterial matName engine spec mapping wCm hCm useDisp =
             local n = CoronaNormal normalMap:(olib_texNode fNormal engine "data" cm wCm hCm)
             n.name = matName + " normal"
             n.flipGreen = flipG
-            if fBump != undefined do ( n.additionalBump = olib_triWire tri (olib_texNode fBump engine "data" cm wCm hCm); n.additionalBumpOn = true )
+            -- the bump goes in as it is: the normal map goes whole through the triplanar, and wired to it
+            -- the bump would close a loop
+            if fBump != undefined do ( n.additionalBump = olib_texNode fBump engine "data" cm wCm hCm; n.additionalBumpOn = true )
             m.baseBumpTexmap = olib_triWire tri n
         )
         else if fBump != undefined do m.baseBumpTexmap = olib_triWire tri (olib_texNode fBump engine "data" cm wCm hCm)
