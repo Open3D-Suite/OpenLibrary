@@ -73,8 +73,8 @@ impl OpenLibraryApp {
             ui.add(egui::Label::new(egui::RichText::new(item.asset.folder.display().to_string()).small().weak()).wrap());
             ui.add_space(4.0);
             self.actions(ui, &item.asset);
-            self.versions(ui, &item);
             self.externals(ui, &item.asset);
+            self.versions(ui, &item);
             self.proxy_and_preview(ui, &item);
         });
     }

@@ -338,12 +338,12 @@ pub fn group<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
 
 /// A row of a form: what it is, and its control where those of the others are.
 pub fn field<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
-    const LABELS: f32 = 190.0;
+    let labels = (ui.available_width() * 0.42).min(190.0);
     ui.horizontal(|ui| {
         ui.set_height(28.0);
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(LABELS, 28.0), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(labels, 28.0), Sense::hover());
         let font = FontId::proportional(13.5);
-        elided(ui.painter(), rect.left_center(), egui::Align2::LEFT_CENTER, label, font, pal(ui).muted, LABELS);
+        elided(ui.painter(), rect.left_center(), egui::Align2::LEFT_CENTER, label, font, pal(ui).muted, labels);
         add(ui)
     })
     .inner

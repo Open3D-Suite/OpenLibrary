@@ -82,7 +82,7 @@ impl Channel {
             "normal" | "nrm" | "nor" | "norm" | "normalmap" | "nrml" => Self::Normal,
             "bump" | "bmp" => Self::Bump,
             "disp" | "displacement" | "displace" | "height" | "dsp" | "depth" | "heightlacement" => Self::Disp,
-            "ao" | "ambientocclusion" | "occlusion" | "occ" => Self::Ao,
+            "ao" | "ambientocclusion" | "ambientoclusion" | "occlusion" | "occ" => Self::Ao,
             "opacity" | "alpha" | "opc" | "cutout" | "alphamasked" => Self::Opacity,
             "emissive" | "emission" | "emit" | "selfillum" => Self::Emission,
             "translucency" | "translucent" | "sss" => Self::Transl,
@@ -178,10 +178,28 @@ fn channel_at(low: &[String], i: usize) -> Option<(Channel, usize, bool)> {
     word.strip_suffix("map").and_then(Channel::from_word).map(|c| (c, 1, deep))
 }
 
+/// Whether the last word is how the whole set was made ("..._COL_4K_METALNESS", "..._basecolor_METALNESS") and not what
+/// this map is: the channel is before, and the word comes after a resolution or in capitals.
+fn is_workflow(words: &[String]) -> bool {
+    let low: Vec<String> = words.iter().map(|t| t.to_lowercase()).collect();
+    let [.., before, last] = &low[..] else { return false };
+    let capitals = words.last().is_some_and(|w| !w.bytes().any(|b| b.is_ascii_lowercase()));
+    if !["metalness", "specular"].contains(&last.as_str()) || !(capitals || resolution(before) > 0) {
+        return false;
+    }
+    let skipped = |w: &String| resolution(w) > 0 || w.strip_prefix("var").is_some_and(is_digits);
+    let channel = low[..low.len() - 1].iter().rposition(|w| !skipped(w)).filter(|i| *i > 0);
+    // words that are often part of the name of a material
+    channel.is_some_and(|i| !["metal", "glossy"].contains(&low[i].as_str()) && channel_at(&low, i).is_some())
+}
+
 /// Takes the name of an image apart.
 pub fn parse_name(file: &str) -> Parsed {
     let (stem, ext) = split_ext(file);
-    let tokens = words(stem);
+    let mut tokens = words(stem);
+    if is_workflow(&tokens) {
+        tokens.pop();
+    }
     let low: Vec<String> = tokens.iter().map(|t| t.to_lowercase()).collect();
     let mut out = Parsed { base: String::new(), channel: None, res: 0, deep: ext == "exr" || ext == "hdr", variant: 0, dx: false };
     let mut cut = tokens.len(); // from here on: channel, resolution and noise
@@ -635,8 +653,11 @@ fn find_preview(material: &Material, loose: &Loose, listing: &Listing) -> Option
     if let Some((_, _, path)) = sample {
         return Some(path.clone());
     }
-    let parent = material.folder.parent()?;
-    let folder = name_of(&material.folder);
+    // "Steel001\METALNESS\4K": the folder of the material is the one above how it was made
+    let made = ["metalness", "specular", "regular"].contains(&name_of(&material.folder).to_lowercase().as_str());
+    let own = if made { material.folder.parent()? } else { &material.folder };
+    let parent = own.parent()?;
+    let folder = name_of(own);
     let side = loose.get(&key_of(parent)).unwrap_or(&empty);
     let wanted = [squash(&folder), squash(&material.name)];
     let hit = side.get(&folder.to_lowercase()).or_else(|| side.iter().find(|(stem, _)| wanted.contains(&squash(stem))).map(|(_, p)| p)).cloned();
@@ -1006,6 +1027,14 @@ mod tests {
     }
 
     #[test]
+    fn a_set_named_after_how_it_was_made_is_one_material() {
+        let maps = ["Cast001_COL_4K_METALNESS.jpg", "Cast001_NRM_4K_METALNESS.jpg", "Cast001_ROUGHNESS_4K_METALNESS.jpg"];
+        let all = build_materials(&listing(&[(r"B:\M", &["Cast001.jpg"]), (r"B:\M\Cast001\METALNESS\4K", &maps)]));
+        assert_eq!((all.len(), all[0].name.as_str(), all[0].channels().len()), (1, "Cast001", 3));
+        assert!(ends(all[0].preview.as_ref(), "Cast001.jpg"));
+    }
+
+    #[test]
     fn channels_and_resolutions_are_told_by_the_name() {
         let cases = [
             ("WoodFlooring065_COL_4K.jpg", Channel::Color, 4),
@@ -1019,6 +1048,13 @@ mod tests {
             ("Poliigon_Facade_10956_heightlacement.tiff", Channel::Disp, 0),
             ("Metal_Plate_Base_Color.png", Channel::Color, 0),
             ("LARGE_STAINS_08_NORM_8_bits.tiff", Channel::Normal, 0),
+            ("MetalAluminumCast001_COL_4K_METALNESS.jpg", Channel::Color, 4),
+            ("MetalAluminumCast001_METALNESS_4K_METALNESS.jpg", Channel::Metal, 4),
+            ("MetalAluminum001_GLOSS_VAR1_4K_SPECULAR.jpg", Channel::Gloss, 4),
+            ("RammedEarth019_ambientoclusion_METALNESS.png", Channel::Ao, 0),
+            ("QuartzFusion002_METALNESS_METALNESS.png", Channel::Metal, 0),
+            ("Rusty_Metal_4K_Specular.jpg", Channel::Refl, 4),
+            ("Copper_Plate_METALNESS.jpg", Channel::Metal, 0),
         ];
         for (name, channel, res) in cases {
             let p = parse_name(name);

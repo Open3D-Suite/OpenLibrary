@@ -360,66 +360,70 @@ impl SettingsWindow {
     fn import(&mut self, ui: &mut egui::Ui) {
         let lang = self.lang;
         let t = |text: Text| text.get(lang);
-        let map = &mut self.import;
-        kit::group(ui, "Merge", |ui| {
-            flag(ui, t(Text::ImpGroup), map, "group", true);
-            let layers = [("asset", t(Text::LayerAsset)), ("current", t(Text::LayerCurrent)), ("file", t(Text::LayerFile))];
-            choice(ui, t(Text::ImpLayer), map, "layer_mode", &layers);
-            let objects = [
-                ("autorename", t(Text::DupRenameAuto)),
-                ("merge", t(Text::DupBoth)),
-                ("skip", t(Text::DupSkip)),
-                ("replace", t(Text::DupReplace)),
-                ("ask", t(Text::DupAsk)),
-            ];
-            choice(ui, t(Text::ImpObjects), map, "object_dups", &objects);
-            let materials = [("scene", t(Text::MatScene)), ("file", t(Text::MatFile)), ("rename", t(Text::MatRename)), ("ask", t(Text::DupAsk))];
-            choice(ui, t(Text::ImpMaterials), map, "material_dups", &materials);
-            let missing = [("ask", t(Text::MissingAsk)), ("fallback", t(Text::MissingFallback))];
-            choice(ui, t(Text::ImpMissingEngine), map, "missing_engine", &missing);
-            ui.horizontal(|ui| {
-                flag(ui, t(Text::ImpLights), map, "import_lights", false);
-                ui.add_space(16.0);
-                flag(ui, t(Text::ImpCameras), map, "import_cameras", false);
+        let (map, relink) = (&mut self.import, &mut self.relink);
+        // in two columns, so that it all fits without scrolling
+        ui.columns(2, |columns| {
+            let [left, right] = columns else { return };
+            kit::group(left, "Merge", |ui| {
+                flag(ui, t(Text::ImpGroup), map, "group", true);
+                let layers = [("asset", t(Text::LayerAsset)), ("current", t(Text::LayerCurrent)), ("file", t(Text::LayerFile))];
+                choice(ui, t(Text::ImpLayer), map, "layer_mode", &layers);
+                let objects = [
+                    ("autorename", t(Text::DupRenameAuto)),
+                    ("merge", t(Text::DupBoth)),
+                    ("skip", t(Text::DupSkip)),
+                    ("replace", t(Text::DupReplace)),
+                    ("ask", t(Text::DupAsk)),
+                ];
+                choice(ui, t(Text::ImpObjects), map, "object_dups", &objects);
+                let materials = [("scene", t(Text::MatScene)), ("file", t(Text::MatFile)), ("rename", t(Text::MatRename)), ("ask", t(Text::DupAsk))];
+                choice(ui, t(Text::ImpMaterials), map, "material_dups", &materials);
+                let missing = [("ask", t(Text::MissingAsk)), ("fallback", t(Text::MissingFallback))];
+                choice(ui, t(Text::ImpMissingEngine), map, "missing_engine", &missing);
+                ui.horizontal(|ui| {
+                    flag(ui, t(Text::ImpLights), map, "import_lights", false);
+                    ui.add_space(16.0);
+                    flag(ui, t(Text::ImpCameras), map, "import_cameras", false);
+                });
+                flag(ui, t(Text::ImpSurface), map, "place_on_surface", true);
+                flag(ui, t(Text::ImpMultiple), map, "place_multiple", true);
             });
-            flag(ui, t(Text::ImpSurface), map, "place_on_surface", true);
-            flag(ui, t(Text::ImpMultiple), map, "place_multiple", true);
-        });
-        kit::group(ui, "Merge as proxy", |ui| {
-            choice(ui, t(Text::ProxyMode), map, "proxy_mode", &[("single", t(Text::ProxySingle)), ("per_object", t(Text::ProxyPerObject))]);
-            let display = [("bbox", t(Text::ProxyBox)), ("preview", t(Text::ProxyPoints)), ("full", t(Text::ProxyMesh))];
-            choice(ui, t(Text::ProxyDisplay), map, "proxy_display", &display);
-            choice(ui, t(Text::ProxyWhere), map, "proxy_location", &[("asset", t(Text::ProxyBeside)), ("custom", t(Text::ProxyCustom))]);
-            ui.add_enabled_ui(text_of(map, "proxy_location") == "custom", |ui| {
-                kit::field(ui, t(Text::Folder), |ui| {
-                    let mut dir = text_of(map, "proxy_custom_dir");
-                    if ui.add(egui::TextEdit::singleline(&mut dir).desired_width(250.0)).changed() {
-                        map.insert("proxy_custom_dir".into(), dir.into());
-                    }
-                    if kit::button(ui, Kind::Action, None, t(Text::Choose)).clicked()
-                        && let Some(path) = rfd::FileDialog::new().pick_folder()
-                    {
-                        map.insert("proxy_custom_dir".into(), path.display().to_string().into());
-                    }
+            kit::group(right, "Merge as proxy", |ui| {
+                choice(ui, t(Text::ProxyMode), map, "proxy_mode", &[("single", t(Text::ProxySingle)), ("per_object", t(Text::ProxyPerObject))]);
+                let display = [("bbox", t(Text::ProxyBox)), ("preview", t(Text::ProxyPoints)), ("full", t(Text::ProxyMesh))];
+                choice(ui, t(Text::ProxyDisplay), map, "proxy_display", &display);
+                choice(ui, t(Text::ProxyWhere), map, "proxy_location", &[("asset", t(Text::ProxyBeside)), ("custom", t(Text::ProxyCustom))]);
+                ui.add_enabled_ui(text_of(map, "proxy_location") == "custom", |ui| {
+                    kit::field(ui, t(Text::Folder), |ui| {
+                        let mut dir = text_of(map, "proxy_custom_dir");
+                        if ui.add(egui::TextEdit::singleline(&mut dir).desired_width((ui.available_width() - 90.0).max(60.0))).changed() {
+                            map.insert("proxy_custom_dir".into(), dir.into());
+                        }
+                        if kit::button(ui, Kind::Action, None, t(Text::Choose)).clicked()
+                            && let Some(path) = rfd::FileDialog::new().pick_folder()
+                        {
+                            map.insert("proxy_custom_dir".into(), path.display().to_string().into());
+                        }
+                    });
                 });
             });
-        });
-        kit::group(ui, t(Text::KindTextures), |ui| {
-            flag(ui, t(Text::ImpRelink), map, "relink_on_import", true);
-            ui.weak(t(Text::ImpDirs));
-            let mut list = list_of(map, "relink_dirs");
-            let before = list.clone();
-            list_box(ui, "settings-relink", 92.0, |ui| {
-                for (i, path) in list.iter().enumerate() {
-                    if list_row(ui, self.relink == Some(i), path, "", None) {
-                        self.relink = Some(i);
+            kit::group(right, t(Text::KindTextures), |ui| {
+                flag(ui, t(Text::ImpRelink), map, "relink_on_import", true);
+                ui.weak(t(Text::ImpDirs));
+                let mut list = list_of(map, "relink_dirs");
+                let before = list.clone();
+                list_box(ui, "settings-relink", 92.0, |ui| {
+                    for (i, path) in list.iter().enumerate() {
+                        if list_row(ui, *relink == Some(i), path, "", None) {
+                            *relink = Some(i);
+                        }
                     }
+                });
+                folder_buttons(ui, lang, &mut list, relink);
+                if list != before {
+                    map.insert("relink_dirs".into(), json!(list));
                 }
             });
-            folder_buttons(ui, lang, &mut list, &mut self.relink);
-            if list != before {
-                map.insert("relink_dirs".into(), json!(list));
-            }
         });
     }
 
@@ -610,7 +614,7 @@ impl SettingsWindow {
         let mut answer = Answer::default();
         let size = ctx.content_rect().size() - egui::Vec2::splat(80.0);
         egui::Modal::new(egui::Id::unique("openlibrary-settings")).show(ctx, |ui| {
-            ui.set_width(size.x.clamp(400.0, 880.0));
+            ui.set_width(size.x.clamp(400.0, 1040.0));
             ui.label(egui::RichText::new(self.t(Text::Settings)).font(kit::strong(20.0)));
             if self.first {
                 ui.label(self.t(Text::Welcome));
@@ -619,7 +623,7 @@ impl SettingsWindow {
             ui.add_space(2.0);
             ui.separator();
             ui.add_space(6.0);
-            let height = (size.y - 190.0).clamp(160.0, 540.0);
+            let height = (size.y - 180.0).clamp(160.0, 560.0);
             egui::ScrollArea::vertical().auto_shrink(false).max_height(height).show(ui, |ui| match self.page {
                 Page::Tabs => self.tabs(ui),
                 Page::Import => self.import(ui),

@@ -50,6 +50,8 @@ What changed for users in each version of OpenLibrary, newest first.
   3ds Max, where there is nothing (a room makes its window) or onto the Slate editor, or use its right-click menu.
   Each material keeps its real size and its mapping, with those you wrote in the Python version. If the scene has the
   material already, you choose whether to use it.
+- Materials whose maps end in how the set was made (`..._COL_4K_METALNESS`, `..._GLOSS_4K_SPECULAR`) are found too; the
+  Python version left them out.
 - A Corona material with a normal and a bump map can be put with triplanar mapping (in the Python version 3ds Max
   refused it).
 - **Settings.** The window has its own settings: the tabs and their folders, how models come in, previews, the bridge
