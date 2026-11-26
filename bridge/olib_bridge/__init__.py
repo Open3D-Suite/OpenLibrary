@@ -2,8 +2,8 @@
 """OpenLibrary's bridge inside 3ds Max.
 
 The OpenLibrary app installs it in %LOCALAPPDATA%\\Autodesk\\3dsMax\\<version>\\ENU\\scripts\\Open3D\\OpenLibrary,
-and the start-up script open3d_openlibrary.ms starts it. It has no interface but the optional toolbar with the
-button that opens the app (toolbar.py).
+and the start-up script open3d_openlibrary.ms starts it. It has no interface but the optional button that opens the
+app, beside those of the other Open3D apps (toolbar.py).
 """
 
 import ctypes
@@ -20,16 +20,27 @@ def start():
     from . import server
 
     port = server.start()
-    if config.read().get("toolbar"):
-        try:
-            from PySide6 import QtCore
+    try:
+        from PySide6 import QtCore
 
-            from . import toolbar
-
-            QtCore.QTimer.singleShot(0, toolbar.show)
-        except Exception as error:  # noqa: BLE001 - 3ds Max goes on without the toolbar
-            print("OpenLibrary: the toolbar could not be made: %s" % error)
+        QtCore.QTimer.singleShot(0, _button)
+    except Exception as error:  # noqa: BLE001 - 3ds Max goes on without the button
+        print("OpenLibrary: the button could not be put: %s" % error)
     return port
+
+
+def _button():
+    """Puts the button that opens the app, once, or takes it away when it is not wanted."""
+    from . import toolbar
+
+    try:
+        data = config.read()
+        wanted = data.get("toolbar", True) or data.get("toolbar_chosen") is not True
+        said = toolbar.place() if wanted else toolbar.remove()
+    except Exception as error:  # noqa: BLE001 - 3ds Max goes on without the button
+        said = "the button could not be put: %s" % error
+    if said:
+        print("OpenLibrary: %s" % said)
 
 
 def refresh_state():

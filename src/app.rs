@@ -167,6 +167,7 @@ pub struct OpenLibraryApp {
     relink_ask: Option<Vec<(PathBuf, Arc<Asset>)>>,
     look: Option<QuickLook>,
     settings_window: Option<SettingsWindow>,
+    setup: Option<crate::ui_setup::SetupWindow>,
     ask: Option<Ask>,
     ask_text: String,
     /// Frames left to tell Windows the theme of the title bar: the window may not be there in the first ones.
@@ -247,6 +248,7 @@ impl OpenLibraryApp {
             relink_ask: None,
             look: None,
             settings_window: None,
+            setup: None,
             ask: None,
             ask_text: String::new(),
             title_bar: 8,
@@ -255,9 +257,9 @@ impl OpenLibraryApp {
         app.reset_tabs();
         app.watch_workspace();
         app.set_on_top(&cc.egui_ctx);
-        let empty = (0..app.settings.libraries().len()).all(|i| app.settings.library_paths(i).is_empty());
-        if empty && app.settings.data.get("setup_done").and_then(Value::as_bool) != Some(true) {
-            app.settings_window = Some(SettingsWindow::new(&app.settings, &app.max, lang, Page::Workspace, true));
+        // the first time: the welcome, which asks for the workspace, the button in 3ds Max and the shortcuts
+        if app.settings.data.get(crate::ui_setup::DONE).and_then(Value::as_bool) != Some(true) {
+            app.setup = Some(crate::ui_setup::SetupWindow::new(&app.settings, &app.max, lang, app.wake.clone()));
         }
         app
     }
@@ -655,6 +657,22 @@ impl OpenLibraryApp {
 
     /// What goes over the gallery.
     fn over(&mut self, ctx: &egui::Context) {
+        if let Some(setup) = &mut self.setup {
+            let answer = setup.show(ctx, &mut self.settings, &mut self.max);
+            if answer.workspace {
+                self.watch_workspace();
+                self.reset_tabs();
+            }
+            if answer.close {
+                self.setup = None;
+                self.max.prompt = None; // the welcome asked it already
+                let empty = (0..self.settings.libraries().len()).all(|i| self.settings.library_paths(i).is_empty());
+                if empty {
+                    self.settings_window = Some(SettingsWindow::new(&self.settings, &self.max, self.lang, Page::Tabs, false));
+                }
+            }
+            return;
+        }
         if self.settings_window.is_none() {
             self.bridge_prompt(ctx);
         }
@@ -690,6 +708,7 @@ impl OpenLibraryApp {
     fn modal_open(&self) -> bool {
         self.look.is_some()
             || self.settings_window.is_some()
+            || self.setup.is_some()
             || self.missing.is_some()
             || self.ask.is_some()
             || self.merge_ask.is_some()

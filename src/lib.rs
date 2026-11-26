@@ -24,6 +24,7 @@ pub mod open3d_settings;
 pub mod platform;
 pub mod quicklook;
 pub mod settings;
+pub mod shortcuts;
 pub mod surface_prefs;
 pub mod surfaces;
 pub mod task;
@@ -32,6 +33,7 @@ pub mod thumbs;
 pub mod ui_catalog;
 pub mod ui_missing;
 pub mod ui_settings;
+pub mod ui_setup;
 pub mod ui_surfaces;
 
 /// The app's name, as the Open3D launcher shows it and as its folders are called.

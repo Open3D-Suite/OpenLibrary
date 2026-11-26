@@ -596,8 +596,8 @@ texts! {
         "Giro de cámara (°)";
     BridgeWhat => "To drag models and materials into the scene, each 3ds Max needs a small bridge, without windows or menus, which listens only on this computer. Restart 3ds Max after installing it.",
         "Para arrastrar modelos y materiales a la escena, cada 3ds Max necesita un puente pequeño, sin ventanas ni menús, que escucha solo en este equipo. Reinicia 3ds Max después de instalarlo.";
-    BridgeToolbar => "With a toolbar button that opens OpenLibrary",
-        "Con un botón en la barra de herramientas que abre OpenLibrary";
+    BridgeToolbar => "With a button that opens OpenLibrary, beside those of the other Open3D apps",
+        "Con un botón que abre OpenLibrary, junto a los de las demás apps Open3D";
     BridgeAbsent => "not installed",
         "no instalado";
     BridgeIsOld => "out of date",
@@ -920,6 +920,40 @@ texts! {
         "El encuadre se calcula con la caja del objeto, así sirve igual para una silla que para un edificio. «Desde mi vista» usa la vista activa tal cual.";
     BridgeRestart => "After installing it, restart 3ds Max.",
         "Después de instalarlo, reinicia 3ds Max.";
+    SetupTitle => "Welcome to OpenLibrary",
+        "Bienvenido a OpenLibrary";
+    SetupStep1 => "Step 1 of 2 · Workspace",
+        "Paso 1 de 2 · Espacio de trabajo";
+    SetupStep2 => "Step 2 of 2 · Where to have it at hand",
+        "Paso 2 de 2 · Dónde tenerla a mano";
+    SetupAlone => "Do you work alone, or with more people?",
+        "¿Trabajas solo o con más gente?";
+    SetupPickFolder => "Choose the folder of the server where the team's library is, or will be.",
+        "Elige la carpeta del servidor donde está, o estará, la biblioteca del equipo.";
+    SetupWillUse => "The team's things go to {folder}: if your colleagues choose the same folder, you all see them.",
+        "Lo del equipo irá a {folder}: si tus compañeros eligen la misma carpeta, lo veis todos.";
+    SetupNext => "Next",
+        "Siguiente";
+    SetupConnect => "Connect {max}",
+        "Conectar {max}";
+    SetupBridgeNote => "The bridge adds no window and no menu: it lets you drag from OpenLibrary into the scene. Each 3ds Max that is open has to be restarted.",
+        "El puente no añade ventanas ni menús: deja arrastrar desde OpenLibrary a la escena. Cada 3ds Max abierto tiene que reiniciarse.";
+    SetupDesktop => "A shortcut on the desktop",
+        "Un acceso directo en el escritorio";
+    SetupStartMenu => "A shortcut in the Start menu",
+        "Un acceso directo en el menú Inicio";
+    SetupHasIt => "{place}: it is there already.",
+        "{place}: ya está.";
+    SetupMade => "Done: {place}.",
+        "Hecho: {place}.";
+    SetupPin => "To have it on the taskbar: with OpenLibrary open, right-click its icon on the taskbar and choose Pin to taskbar. Windows lets no program pin itself.",
+        "Para tenerla en la barra de tareas: con OpenLibrary abierta, clic derecho en su icono de la barra de tareas › Anclar a la barra de tareas. Windows no deja que un programa se ancle solo.";
+    SetupRestartMax => "Restart 3ds Max, so that it connects and shows the button.",
+        "Reinicia 3ds Max para que se conecte y salga el botón.";
+    SetupNotNow => "Not now",
+        "Ahora no";
+    SetupLater => "Nothing was installed. You can do it in Settings › 3ds Max.",
+        "No se ha instalado nada. Puedes hacerlo en Ajustes › 3ds Max.";
     SettingsError => "The settings could not be saved: {error}", "No se pudieron guardar los ajustes: {error}";
 }
 
