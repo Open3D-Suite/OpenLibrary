@@ -16,7 +16,7 @@ pub const MIN_YEAR: u32 = 2025;
 pub const STARTUP_NAME: &str = "open3d_openlibrary.ms";
 
 /// The bridge's files: where each goes under `scripts\Open3D\OpenLibrary`, and its content.
-pub const FILES: [(&str, &[u8]); 9] = [
+pub const FILES: [(&str, &[u8]); 17] = [
     ("olib_bridge/__init__.py", include_bytes!("../bridge/olib_bridge/__init__.py")),
     ("olib_bridge/config.py", include_bytes!("../bridge/olib_bridge/config.py")),
     ("olib_bridge/ops.py", include_bytes!("../bridge/olib_bridge/ops.py")),
@@ -26,6 +26,14 @@ pub const FILES: [(&str, &[u8]); 9] = [
     ("olib_bridge/olib_materials.ms", include_bytes!("../bridge/olib_bridge/olib_materials.ms")),
     ("olib_bridge/olib_launch.mcr", include_bytes!("../bridge/olib_bridge/olib_launch.mcr")),
     ("olib_bridge/openlibrary.svg", include_bytes!("../bridge/olib_bridge/openlibrary.svg")),
+    ("olib_bridge/icons/Dark/OpenLibrary_16.png", include_bytes!("../bridge/olib_bridge/icons/Dark/OpenLibrary_16.png")),
+    ("olib_bridge/icons/Dark/OpenLibrary_24.png", include_bytes!("../bridge/olib_bridge/icons/Dark/OpenLibrary_24.png")),
+    ("olib_bridge/icons/Dark/OpenLibrary_32.png", include_bytes!("../bridge/olib_bridge/icons/Dark/OpenLibrary_32.png")),
+    ("olib_bridge/icons/Dark/OpenLibrary_48.png", include_bytes!("../bridge/olib_bridge/icons/Dark/OpenLibrary_48.png")),
+    ("olib_bridge/icons/Light/OpenLibrary_16.png", include_bytes!("../bridge/olib_bridge/icons/Light/OpenLibrary_16.png")),
+    ("olib_bridge/icons/Light/OpenLibrary_24.png", include_bytes!("../bridge/olib_bridge/icons/Light/OpenLibrary_24.png")),
+    ("olib_bridge/icons/Light/OpenLibrary_32.png", include_bytes!("../bridge/olib_bridge/icons/Light/OpenLibrary_32.png")),
+    ("olib_bridge/icons/Light/OpenLibrary_48.png", include_bytes!("../bridge/olib_bridge/icons/Light/OpenLibrary_48.png")),
 ];
 /// The start-up script, which goes to `scripts\startup`.
 pub const STARTUP: &[u8] = include_bytes!("../bridge/open3d_openlibrary.ms");
@@ -82,20 +90,28 @@ impl MaxTarget {
         fs::read(self.app_json()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v.as_object().cloned()).unwrap_or_default()
     }
 
-    /// Whether 3ds Max shows the OpenLibrary toolbar.
+    /// Whether 3ds Max has the button that opens OpenLibrary: yes, unless the person said no in the settings (0.1.0
+    /// wrote "no" without asking, and that does not count).
     pub fn toolbar(&self) -> bool {
-        self.read_app_json().get("toolbar").and_then(Value::as_bool).unwrap_or(false)
+        let data = self.read_app_json();
+        let chosen = data.get("toolbar_chosen").and_then(Value::as_bool) == Some(true);
+        !chosen || data.get("toolbar").and_then(Value::as_bool).unwrap_or(true)
+    }
+
+    fn toolbar_chosen(&self) -> bool {
+        self.read_app_json().get("toolbar_chosen").and_then(Value::as_bool) == Some(true)
     }
 
     /// Copies the bridge and writes `app.json`. `toolbar: None` keeps what was chosen before.
     pub fn install(&self, exe: &Path, sealed_token: &str, toolbar: Option<bool>) -> Result<(), String> {
+        let chosen = toolbar.is_some() || self.toolbar_chosen();
         let toolbar = toolbar.unwrap_or_else(|| self.toolbar());
         let folder = self.folder();
         for (rel, data) in FILES {
             write_whole(&folder.join(rel), data)?;
         }
         write_whole(&self.startup(), STARTUP)?;
-        self.write_app_json(exe, sealed_token, toolbar)
+        self.write_app_json(exe, sealed_token, (toolbar, chosen))
     }
 
     /// Takes the bridge out: its own files, and its folders when nothing else is left in them.
@@ -107,6 +123,14 @@ impl MaxTarget {
         }
         let package = folder.join("olib_bridge");
         let _ = fs::remove_dir_all(package.join("__pycache__")); // what Python compiled of them
+        // the icons the bridge copied for its button, and the folders of its own icons
+        for theme in ["Dark", "Light"] {
+            for size in [16, 24, 32, 48] {
+                let _ = fs::remove_file(self.enu.join("usericons").join(theme).join(format!("OpenLibrary_{size}.png")));
+            }
+            let _ = fs::remove_dir(package.join("icons").join(theme));
+        }
+        let _ = fs::remove_dir(package.join("icons"));
         for dir in [Some(package.as_path()), Some(folder.as_path()), folder.parent()].into_iter().flatten() {
             if fs::remove_dir(dir).is_err() {
                 break; // something of somebody else's is in it
@@ -115,8 +139,13 @@ impl MaxTarget {
         Ok(())
     }
 
-    fn write_app_json(&self, exe: &Path, sealed_token: &str, toolbar: bool) -> Result<(), String> {
-        let data = json!({"command": [exe.display().to_string()], "toolbar": toolbar, "token_dpapi": sealed_token});
+    fn write_app_json(&self, exe: &Path, sealed_token: &str, (toolbar, chosen): (bool, bool)) -> Result<(), String> {
+        let data = json!({
+            "command": [exe.display().to_string()],
+            "toolbar": toolbar,
+            "toolbar_chosen": chosen,
+            "token_dpapi": sealed_token,
+        });
         write_whole(&self.app_json(), &serde_json::to_vec_pretty(&data).map_err(|e| e.to_string())?)
     }
 
@@ -133,7 +162,7 @@ impl MaxTarget {
         if same_exe && same_token {
             return Ok(false);
         }
-        self.write_app_json(exe, sealed_token, self.toolbar())?;
+        self.write_app_json(exe, sealed_token, (self.toolbar(), self.toolbar_chosen()))?;
         Ok(true)
     }
 }
@@ -225,6 +254,25 @@ mod tests {
         target.install(&exe, "aa11", None).unwrap();
         assert!(!target.outdated());
         assert!(target.toolbar()); // updating without saying keeps the choice
+        target.install(&exe, "aa11", Some(false)).unwrap();
+        target.install(&exe, "aa11", None).unwrap();
+        assert!(!target.toolbar()); // a "no" in the settings stays
+    }
+
+    #[test]
+    fn the_button_comes_unless_the_person_said_no() {
+        let s = Scratch::new("button");
+        let target = find_targets(&s.0).remove(0);
+        let exe = s.0.join("OpenLibrary.exe");
+        target.install(&exe, "aa11", None).unwrap();
+        assert!(target.toolbar());
+        // what 0.1.0 wrote when it installed the bridge from its prompt, without asking
+        let old = json!({"command": [exe.display().to_string()], "toolbar": false, "token_dpapi": "aa11"});
+        fs::write(target.app_json(), serde_json::to_vec(&old).unwrap()).unwrap();
+        assert!(target.toolbar());
+        target.install(&exe, "aa11", None).unwrap();
+        let data: Value = serde_json::from_slice(&fs::read(target.app_json()).unwrap()).unwrap();
+        assert_eq!((data["toolbar"].clone(), data["toolbar_chosen"].clone()), (json!(true), json!(false)));
     }
 
     #[test]

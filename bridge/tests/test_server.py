@@ -158,7 +158,7 @@ class TextIsNeverCodeTests(unittest.TestCase):
         bridge = os.path.dirname(HERE)
         for folder, dirs, files in os.walk(bridge):
             dirs[:] = [d for d in dirs if d not in ("tests", "__pycache__")]
-            for name in files:
+            for name in (f for f in files if not f.endswith(".png")):  # the icons are images
                 with open(os.path.join(folder, name), encoding="utf-8-sig") as fh:  # valid UTF-8, all of them
                     for line in fh:
                         code = line.strip()

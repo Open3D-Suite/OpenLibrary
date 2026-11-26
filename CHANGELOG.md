@@ -2,6 +2,15 @@
 
 What changed for users in each version of OpenLibrary, newest first.
 
+## 0.1.1 — 2026-11-26
+
+- **A welcome the first time.** After installing it, OpenLibrary asks whether you work alone or share a workspace with a
+  team, connects each 3ds Max (with its button), and makes the shortcuts on the desktop and in the Start menu that are
+  not there yet; it also says how to pin it to the taskbar, which Windows lets no program do by itself.
+- **The button in 3ds Max.** The bridge puts a button that opens OpenLibrary beside those of the other Open3D apps, such
+  as OpenManager's, or on a toolbar of its own; once, and you can move it or take it away. It comes unless you say no
+  in *Settings › 3ds Max*. In 0.1.0 it only came when you chose it there.
+
 ## 0.1.0 — 2026-11-24
 
 - **First version.** Starts the Rust rewrite of OpenLibrary from the Open3D template.

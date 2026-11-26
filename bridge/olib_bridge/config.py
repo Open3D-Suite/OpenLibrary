@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """app.json, which the OpenLibrary app writes beside the bridge when it installs it: where the app is
-("command"), whether 3ds Max shows the OpenLibrary toolbar ("toolbar") and the token the app's requests carry,
-encrypted for this Windows user with DPAPI ("token_dpapi", in hex)."""
+("command"), whether 3ds Max has the button that opens it ("toolbar"; "toolbar_chosen" when the person chose that in
+the settings) and the token the app's requests carry, encrypted for this Windows user with DPAPI ("token_dpapi", in
+hex)."""
 
 import ctypes
 import json

@@ -342,6 +342,18 @@ pub fn open_document(path: &std::path::Path) {
     let _ = command.spawn(); // without Explorer there is nothing to show
 }
 
+/// Whether a 3ds Max is open on this computer (a bridge installed now starts with its next start).
+pub fn max_running() -> bool {
+    let mut command = std::process::Command::new(system_program("tasklist.exe"));
+    command.args(["/FI", "IMAGENAME eq 3dsmax.exe", "/NH"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // no console window
+    }
+    command.output().is_ok_and(|out| String::from_utf8_lossy(&out.stdout).to_lowercase().contains("3dsmax.exe"))
+}
+
 /// A program of Windows itself, by its whole path, so that no other program of that name runs instead.
 pub fn system_program(name: &str) -> std::path::PathBuf {
     let root = std::env::var_os("SystemRoot").map_or_else(|| std::path::PathBuf::from("C:/Windows"), std::path::PathBuf::from);

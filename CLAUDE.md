@@ -50,6 +50,8 @@ Update it in the same commit as a change that makes it old.
 - `src/app/work.rs`: the window's batches (previews, model data) and what opens the two windows below.
 - `src/app/live.rs`: what is asked of an open 3ds Max: the preview of its selection, lost paths of the scene or of
   `.max` files.
+- `src/ui_setup.rs`: the welcome of the first time (`olib_welcome_done`): workspace, bridge with its button, shortcuts.
+  `src/shortcuts.rs`: the shortcuts, made by Windows' PowerShell with the paths in environment variables.
 - `src/ui_settings.rs`: the settings window (a draft until it is accepted, but the bridge). `src/quicklook.rs`: the
   image of a card, large.
 - `src/ui_catalog.rs`, `src/ui_missing.rs`: the windows to catalogue a download and for the missing files.
@@ -77,7 +79,7 @@ Update it in the same commit as a change that makes it old.
   and `discover` on 127.0.0.1:47820-47829, and `choose_file`, `relink_dirs`, `proxy_dir` for a merge.
 - `bridge/`: what runs inside 3ds Max (Python and MAXScript, English only): `olib_bridge/server.py` (refuses a
   request without the token and closes on a line that is not a JSON object; only `COMMANDS`), `ops.py`,
-  `olib_core.ms` and `olib_materials.ms` (every global starts with `olib_`), `config.py` (decrypts the token). It lives beside the
+  `toolbar.py` (the button, written once into the `.cuix` of 3ds Max beside OpenManager's, with a backup), `olib_core.ms` and `olib_materials.ms` (every global starts with `olib_`), `config.py` (decrypts the token). It lives beside the
   Python version's bridge (`scripts\OpenLibrary`, ports 47800-47809, prefix `olb_`) without touching it.
   `bridge/tests` run without 3ds Max, with stand-ins for pymxs and Qt.
 - `src/maxbatch.rs`: jobs of a 3ds Max in the background (`3dsmaxbatch.exe`): `Job` is a function of
