@@ -2,7 +2,7 @@
 
 What changed for users in each version of OpenLibrary, newest first.
 
-## In development
+## 0.1.1 — 2026-11-26
 
 - **A welcome the first time.** After installing it, OpenLibrary asks whether you work alone or share a workspace with a
   team, connects each 3ds Max (with its button), and makes the shortcuts on the desktop and in the Start menu that are
