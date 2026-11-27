@@ -2,7 +2,7 @@
 
 What changed for users in each version of OpenLibrary, newest first.
 
-## In development
+## 0.1.2 — 2026-11-27
 
 - **The renderer of compressed scenes.** A `.max` saved with *Compress on Save* showed no Corona or V-Ray logo, as if
   it were made for another renderer, because its list of classes is compressed. It is now opened and read, and the
