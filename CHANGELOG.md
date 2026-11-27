@@ -2,7 +2,7 @@
 
 What changed for users in each version of OpenLibrary, newest first.
 
-## In development
+## 0.1.3 — 2026-11-27
 
 - **The button in 3ds Max stays.** 3ds Max saves its interface when it closes, and it could save it without the
   OpenLibrary button (a 3ds Max opened before the button was put, for one), which then did not come back. Now each

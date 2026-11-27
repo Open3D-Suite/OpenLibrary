@@ -13,7 +13,7 @@ from ctypes import wintypes
 
 from . import config
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 
 
 def start():
