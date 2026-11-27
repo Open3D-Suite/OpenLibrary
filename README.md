@@ -5,7 +5,7 @@ your own folders with previews, drag a model or a material into the scene, and c
 click. A single Windows program, nothing else to install, no account. Part of the
 [Open3D](https://github.com/Open3D-Suite) suite of open-source tools for 3D work.
 
-**Version 0.1.2** – what changed in each version is in [`CHANGELOG.md`](CHANGELOG.md).
+**Version 0.1.3** – what changed in each version is in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Install
 
