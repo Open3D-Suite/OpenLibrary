@@ -90,7 +90,7 @@ Update it in the same commit as a change that makes it old.
 - `src/missing.rs`: the external files a `.max` does not find (`externals`), and the job that changes or removes
   their paths without opening it. `CheckCache` keeps what was found in `external_files.json`.
 - `src/archives.rs`: opens a download with the 7-Zip, NanaZip or UnRAR installed, or the `tar` of Windows; its parts
-  (`volumes`). `src/catalog.rs`: the proposed share (`guess`), the names and the copy (`Plan`).
+  (`volumes`). `src/catalog.rs`: the proposed share (`guess`: the `.max`, the maps of `MAP_EXTS`, nothing else), the names and the copy (`Plan`).
 - `src/surfaces.rs`: materials and textures: `parse_name` (channel, resolution), `real_size`, `build_materials`,
   `build_textures`, and `SurfaceIndex` with its cache (`surf_*.json`), which also keeps the pixels of the colour maps.
 - `src/interiors.rs`: the wParallax and ShadersBOX rooms (`build_interiors`).

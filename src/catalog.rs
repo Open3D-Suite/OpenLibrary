@@ -88,6 +88,17 @@ pub fn list_files(folder: &Path, limit: usize) -> Vec<Item> {
     out
 }
 
+/// What goes to the maps folder: images, also those the preview list does not show (HDR, EXR, Photoshop...), and
+/// the other files a scene points at (IES light profiles, V-Ray and Corona proxies). The rest of a download (FBX,
+/// OBJ, material libraries, other programs' scenes, texts) is not copied unless it is moved there by hand.
+const MAP_EXTS: [&str; 20] = [
+    "jpg", "jpeg", "png", "bmp", "tif", "tiff", "webp", "tga", "exr", "hdr", "hdri", "psd", "dds", "gif", "tx", "jxr", "ies", "vrmesh", "cgeo", "vdb",
+];
+
+fn is_map(item: &Item) -> bool {
+    MAP_EXTS.contains(&item.ext.as_str())
+}
+
 /// Whether a folder's name says it holds maps.
 fn is_maps_folder(rel: &str) -> bool {
     const WORDS: [&str; 13] =
@@ -95,8 +106,9 @@ fn is_maps_folder(rel: &str) -> bool {
     rel.to_lowercase().split(['\\', '/', ' ', '_', '.', '-']).any(|w| WORDS.contains(&w))
 }
 
-/// The proposed share: the `.max` to their place, the rest to the maps, and as preview one image, only if it is
-/// clear: it is called like the `.max` or the download, or says so, or is the only one outside a maps folder.
+/// The proposed share: the `.max` to their place, the maps to the maps folder (`MAP_EXTS`), nothing else, and as
+/// preview one image, only if it is clear: it is called like the `.max` or the download, or says so, or is the only
+/// one outside a maps folder.
 pub fn guess(items: &[Item], source: &str) -> Vec<Bucket> {
     let mut out: Vec<Bucket> = items
         .iter()
@@ -105,7 +117,7 @@ pub fn guess(items: &[Item], source: &str) -> Vec<Bucket> {
             let junk = ["thumbs.db", "desktop.ini", ".ds_store"].contains(&low.as_str()) || ["url", "lnk", "webloc"].contains(&item.ext.as_str());
             if item.is_max() {
                 Bucket::Max
-            } else if junk || low.starts_with("._") {
+            } else if junk || low.starts_with("._") || !is_map(item) {
                 Bucket::Skip
             } else {
                 Bucket::Maps
@@ -398,6 +410,19 @@ mod tests {
     fn the_files_are_shared_out() {
         let items = [item("sofa.max", ""), item("sofa.jpg", ""), item("oak.jpg", "maps"), item("site.url", ""), item("._x.jpg", "")];
         assert_eq!(guess(&items, "Sofa"), [Bucket::Max, Bucket::Preview, Bucket::Maps, Bucket::Skip, Bucket::Skip]);
+        // only what the scene uses goes to the maps: not the other formats of the model, nor material libraries
+        let more = [
+            item("sofa.max", ""),
+            item("oak.EXR", "maps"),
+            item("lamp.ies", ""),
+            item("sofa.fbx", ""),
+            item("sofa.obj", ""),
+            item("sofa.mtl", ""),
+            item("sofa.mat", ""),
+            item("readme.txt", ""),
+        ];
+        let want = [Bucket::Max, Bucket::Maps, Bucket::Maps, Bucket::Skip, Bucket::Skip, Bucket::Skip, Bucket::Skip, Bucket::Skip];
+        assert_eq!(guess(&more, "Sofa"), want);
     }
 
     #[test]
