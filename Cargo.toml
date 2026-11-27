@@ -27,6 +27,8 @@ eframe = { version = "0.37", default-features = false, features = ["default_font
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp", "webp", "tiff", "tga", "exr", "hdr"] }
 # Decodes a large JPEG at a fraction of its size, for the thumbnails.
 jpeg-decoder = { version = "0.3", default-features = false }
+# Opens the streams that 3ds Max compresses when it saves with "Compress on Save".
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 # The file and folder dialogs of Windows.
 rfd = { version = "0.15", default-features = false }
 

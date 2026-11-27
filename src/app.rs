@@ -196,7 +196,8 @@ impl OpenLibraryApp {
         let ctx = cc.egui_ctx.clone();
         let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(move || ctx.request_repaint());
         let loader = ThumbLoader::new(data_dir.join("thumbs"), 8, wake.clone());
-        let engines = Arc::new(EngineCache::load(&data_dir.join("engines.json")));
+        let _ = std::fs::remove_file(data_dir.join("engines.json")); // the old cache, wrong about compressed scenes
+        let engines = Arc::new(EngineCache::load(&data_dir.join(crate::maxfile::ENGINE_CACHE)));
         let checks = Arc::new(CheckCache::load(&data_dir.join("external_files.json")));
         let (jobs, found) = spawn_reader(engines.clone(), checks.clone(), wake.clone());
         let skip: Vec<u32> = settings

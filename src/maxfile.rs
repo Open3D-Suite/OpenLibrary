@@ -328,6 +328,24 @@ pub fn engine_from_classes(classes: &str, dlls: &str) -> Engine {
     winner(usage).or_else(|| winner(score(&format!("{classes}{dlls}")))).unwrap_or(Engine::Other)
 }
 
+/// A stream as 3ds Max wrote it: saved with "Compress on Save", most streams are gzip, and are opened here.
+/// A stream that does not open is given as it is.
+fn unpacked(data: Vec<u8>, limit: u64) -> Vec<u8> {
+    use std::io::Read;
+    if !data.starts_with(&[0x1f, 0x8b]) {
+        return data;
+    }
+    let mut out = Vec::new();
+    match flate2::read::GzDecoder::new(data.as_slice()).take(limit).read_to_end(&mut out) {
+        Ok(_) => out,
+        Err(_) => data,
+    }
+}
+
+/// The name of the cache of renderers in the data folder. It changed when compressed scenes began to be read:
+/// what the old one says of them is wrong.
+pub const ENGINE_CACHE: &str = "engines-2.json";
+
 /// The renderer a `.max` file was made for; `Other` when it cannot be read.
 pub fn detect_engine(path: &Path) -> Engine {
     let read = || -> Result<(Vec<u8>, Vec<u8>), CfbError> {
@@ -337,7 +355,7 @@ pub fn detect_engine(path: &Path) -> Engine {
             None => cf.read_stream("ClassDirectory2", 8 << 20)?.unwrap_or_default(),
         };
         let dlls = cf.read_stream("DllDirectory", 8 << 20)?.unwrap_or_default();
-        Ok((classes, dlls))
+        Ok((unpacked(classes, 8 << 20), unpacked(dlls, 8 << 20)))
     };
     match read() {
         Ok((classes, dlls)) => engine_from_classes(&utf16(&classes), &utf16(&dlls)),
@@ -747,6 +765,18 @@ mod tests {
         let classes = utf16("VRayMtl\0Bitmaptexture\0CoronaRenderer\0");
         std::fs::write(&path, compound(&[("ClassDirectory3", &classes), ("DllDirectory", &[])])).unwrap();
         assert_eq!(detect_engine(&path), Engine::VRay);
+        // saved with "Compress on Save": the streams are gzip
+        let gzip = |data: &[u8]| {
+            use std::io::Write;
+            let mut writer = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            writer.write_all(data).unwrap();
+            writer.finish().unwrap()
+        };
+        let (classes, dlls) = (gzip(&utf16("CoronaMtl\0Multi/Sub-Object\0CoronaRenderer\0")), gzip(&utf16("coronamax2020.dlr\0")));
+        std::fs::write(&path, compound(&[("ClassDirectory3", &classes), ("DllDirectory", &dlls)])).unwrap();
+        assert_eq!(detect_engine(&path), Engine::Corona);
+        // a stream that only looks compressed is read as it is
+        assert_eq!(unpacked(vec![0x1f, 0x8b, 1, 2], 100), [0x1f, 0x8b, 1, 2]);
         std::fs::write(&path, b"broken").unwrap();
         assert_eq!(detect_engine(&path), Engine::Other);
         std::fs::remove_dir_all(&dir).unwrap();

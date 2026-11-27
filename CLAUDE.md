@@ -62,7 +62,7 @@ Update it in the same commit as a change that makes it old.
 - `src/platform.rs`: every call to Windows but one.
 - `src/maxfile.rs`: reads a `.max` without 3ds Max (compound file): its renderer (`detect_engine`), the viewport
   capture 3ds Max saved in it (`embedded_thumbnail`) and its external files (`read_assets`); `EngineCache`
-  keeps each file's renderer by date and size in `engines.json` of the data folder.
+  keeps each file's renderer by date and size in `engines-2.json` of the data folder (scenes saved with "Compress on Save" have gzip streams: `unpacked`).
 - `src/library.rs`: the index of a library (`LibraryIndex`): assets by engine suffix (`split_engine_suffix`), their
   previews, a cache per set of roots (`cache_name`) and a scan that lists again only the folders whose date changed;
   `hidden_folders` for the folders not shown.
