@@ -1829,6 +1829,7 @@ name = "openlibrary"
 version = "0.1.1"
 dependencies = [
  "eframe",
+ "flate2",
  "image",
  "jpeg-decoder",
  "rfd",
