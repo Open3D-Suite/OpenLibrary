@@ -30,7 +30,7 @@ def start():
 
 
 def _button():
-    """Puts the button that opens the app, once, or takes it away when it is not wanted."""
+    """Puts the button that opens the app back if 3ds Max lost it, or takes it away when it is not wanted."""
     from . import toolbar
 
     try:

@@ -79,7 +79,7 @@ Update it in the same commit as a change that makes it old.
   and `discover` on 127.0.0.1:47820-47829, and `choose_file`, `relink_dirs`, `proxy_dir` for a merge.
 - `bridge/`: what runs inside 3ds Max (Python and MAXScript, English only): `olib_bridge/server.py` (refuses a
   request without the token and closes on a line that is not a JSON object; only `COMMANDS`), `ops.py`,
-  `toolbar.py` (the button, written once into the `.cuix` of 3ds Max beside OpenManager's, with a backup), `olib_core.ms` and `olib_materials.ms` (every global starts with `olib_`), `config.py` (decrypts the token). It lives beside the
+  `toolbar.py` (the button, written into the `.cuix` of 3ds Max beside OpenManager's, with a backup, and put back at each start while it is wanted: a 3ds Max that closes saves its interface, and one opened before the button was put saves it without it), `olib_core.ms` and `olib_materials.ms` (every global starts with `olib_`), `config.py` (decrypts the token). It lives beside the
   Python version's bridge (`scripts\OpenLibrary`, ports 47800-47809, prefix `olb_`) without touching it.
   `bridge/tests` run without 3ds Max, with stand-ins for pymxs and Qt.
 - `src/maxbatch.rs`: jobs of a 3ds Max in the background (`3dsmaxbatch.exe`): `Job` is a function of

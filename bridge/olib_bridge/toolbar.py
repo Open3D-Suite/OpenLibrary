@@ -4,8 +4,10 @@
 3ds Max has no call to add a button to a toolbar, so, as OpenManager does, the interface is saved, the button is
 written into its .cuix file (XML, UTF-8 with a byte order mark) and the file is loaded again. It goes beside the
 button of another Open3D app when a toolbar has one (OpenManager's, OpenTools'), or else on a toolbar of its own,
-"OpenLibrary". It is put once: a person who then moves it or takes it away is not overruled. The file is backed up
-first in OpenLibrary's data folder and put back if anything fails.
+"OpenLibrary". While the button is wanted (Settings > 3ds Max in the app), every start checks that the interface
+has it, anywhere: 3ds Max saves its interface when it closes, and a 3ds Max that was opened before the button was put
+saves it without the button. Where the person moves it is kept; to take it away, the app's setting is unticked. The
+file is backed up first in OpenLibrary's data folder and put back if anything fails.
 
 The text functions need neither 3ds Max nor Qt; place() and remove() use pymxs, imported inside them.
 """
@@ -98,6 +100,11 @@ def copy_icons(user_icons):
             shutil.copyfile(os.path.join(HERE, "icons", theme, name), os.path.join(target, name))
 
 
+def _read(path):
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        return f.read()
+
+
 def _change(edit, environ):
     """Saves the interface, changes it with `edit` and loads it again; a line for the Listener, or None."""
     from pymxs import runtime as rt
@@ -107,12 +114,14 @@ def _change(edit, environ):
     folder = data_folder(environ)
     if folder is None:
         return "no data folder for the backup of the interface"
+    path = str(rt.cui.getConfigFile() or "")
+    if path and os.path.isfile(path) and edit(_read(path)) is None:
+        return None  # nothing to change: the interface is not saved for nothing
     rt.cui.saveConfig()
     path = str(rt.cui.getConfigFile() or "")
     if not path or not os.path.isfile(path):
         return "3ds Max did not say which interface file it uses"
-    with open(path, encoding="utf-8-sig", newline="") as f:
-        text = f.read()
+    text = _read(path)
     new = edit(text)
     if new is None or new == text:
         return None
@@ -133,16 +142,26 @@ def _change(edit, environ):
     return "the interface was changed (its backup: %s)" % backup
 
 
+def _icons_there(user_icons):
+    return all(
+        os.path.isfile(os.path.join(user_icons, theme, "%s_%d.png" % (NAME, size)))
+        for theme in ("Dark", "Light")
+        for size in SIZES
+    )
+
+
 def place(environ=None):
-    """Once: puts the button, or notes that the interface has it already."""
+    """At every start while the button is wanted: puts it back if the interface does not have it, and its icon."""
     folder = data_folder(environ)
-    if folder is None or os.path.isfile(os.path.join(folder, DONE)):
+    if folder is None:
         return None
     from pymxs import runtime as rt
 
     try:
-        copy_icons(str(rt.getDir(rt.Name("userIcons"))))
-        rt.colorman.reInitIcons()
+        user_icons = str(rt.getDir(rt.Name("userIcons")))
+        if not _icons_there(user_icons):
+            copy_icons(user_icons)
+            rt.colorman.reInitIcons()
     except Exception as error:  # noqa: BLE001 - the button shows its name without its icon
         print("OpenLibrary: the icon of the button could not be copied: %s" % error)
     said = _change(with_button, environ)

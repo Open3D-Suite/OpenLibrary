@@ -2,7 +2,10 @@
 """The button in the interface file of 3ds Max, without 3ds Max: only the text changes are checked."""
 
 import os
+import shutil
 import sys
+import tempfile
+import types
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -70,6 +73,76 @@ class ButtonTests(unittest.TestCase):
         for theme in ("Dark", "Light"):
             for size in toolbar.SIZES:
                 self.assertTrue(os.path.isfile(os.path.join(toolbar.HERE, "icons", theme, "OpenLibrary_%d.png" % size)))
+
+
+class FakeMax:
+    """What place() asks of 3ds Max, with an interface file in a folder of its own."""
+
+    def __init__(self, folder, text):
+        self.file = os.path.join(folder, "ui.cuix")
+        self.icons = os.path.join(folder, "usericons")
+        self.saved = 0
+        with open(self.file, "w", encoding="utf-8-sig", newline="") as f:
+            f.write(text)
+        self.cui = types.SimpleNamespace(
+            getConfigFile=lambda: self.file,
+            saveConfig=self._save,
+            loadConfig=lambda path: True,
+            showToolbar=lambda name: True,
+        )
+        self.colorman = types.SimpleNamespace(reInitIcons=lambda: True)
+
+    def _save(self):
+        self.saved += 1
+
+    def GetQuietMode(self):  # noqa: N802 - the name 3ds Max gives it
+        return False
+
+    def IsNetServer(self):  # noqa: N802 - the name 3ds Max gives it
+        return False
+
+    def Name(self, name):  # noqa: N802 - the name 3ds Max gives it
+        return name
+
+    def getDir(self, name):  # noqa: N802 - the name 3ds Max gives it
+        return self.icons
+
+    def text(self):
+        with open(self.file, encoding="utf-8-sig", newline="") as f:
+            return f.read()
+
+
+class PlaceTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.max = FakeMax(self.dir, interface(window("Mine", OPENMANAGER)))
+        sys.modules["pymxs"] = types.SimpleNamespace(runtime=self.max)
+        self.env = {"OPEN3D_DATA_DIR": os.path.join(self.dir, "data")}
+
+    def tearDown(self):
+        sys.modules.pop("pymxs", None)
+        shutil.rmtree(self.dir)
+
+    def test_a_button_3ds_max_lost_is_put_back(self):
+        os.makedirs(toolbar.data_folder(self.env))
+        with open(os.path.join(toolbar.data_folder(self.env), toolbar.DONE), "w") as f:
+            f.write("1\n")  # it was put before, and a 3ds Max that closed later saved its interface without it
+        self.assertTrue(toolbar.place(self.env).startswith("the interface was changed"))
+        self.assertTrue(toolbar.has_button(self.max.text()))
+        self.assertTrue(os.path.isfile(os.path.join(self.max.icons, "Dark", "OpenLibrary_24.png")))
+
+    def test_an_interface_with_the_button_is_not_saved_again(self):
+        toolbar.place(self.env)
+        saved = self.max.saved
+        self.assertIsNone(toolbar.place(self.env))
+        self.assertEqual(self.max.saved, saved)
+        self.assertEqual(self.max.text().count(toolbar.ACTION), 1)
+
+    def test_taking_it_away_when_it_is_not_wanted(self):
+        toolbar.place(self.env)
+        self.assertTrue(toolbar.remove(self.env).startswith("the interface was changed"))
+        self.assertFalse(toolbar.has_button(self.max.text()))
+        self.assertIsNone(toolbar.remove(self.env))  # once
 
 
 if __name__ == "__main__":

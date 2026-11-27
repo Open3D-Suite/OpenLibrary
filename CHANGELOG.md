@@ -2,6 +2,13 @@
 
 What changed for users in each version of OpenLibrary, newest first.
 
+## In development
+
+- **The button in 3ds Max stays.** 3ds Max saves its interface when it closes, and it could save it without the
+  OpenLibrary button (a 3ds Max opened before the button was put, for one), which then did not come back. Now each
+  start of 3ds Max puts it back if it is missing, where you left it if you moved it. To take it away, untick it in
+  *Settings › 3ds Max*.
+
 ## 0.1.2 — 2026-11-27
 
 - **The renderer of compressed scenes.** A `.max` saved with *Compress on Save* showed no Corona or V-Ray logo, as if
