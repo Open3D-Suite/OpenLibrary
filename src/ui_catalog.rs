@@ -256,6 +256,8 @@ impl CatalogWindow {
         let buckets = catalog::guess(&list, &name);
         self.entries = items.into_iter().zip(buckets).map(|((item, engine), bucket)| Entry { item, bucket, engine, selected: false }).collect();
         self.name = catalog::clean_name(&name);
+        // the Corona version is made only when the download has none
+        self.to_corona = !self.entries.iter().any(|e| e.item.is_max() && e.engine == Engine::Corona);
         let total: u64 = self.entries.iter().map(|e| e.item.size).sum();
         self.status = fill(
             self.t(if self.entries.iter().any(|e| e.item.is_max()) { Text::CatalogOpened } else { Text::CatalogOpenedNoMax }),

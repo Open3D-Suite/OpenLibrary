@@ -8,6 +8,14 @@ What changed for users in each version of OpenLibrary, newest first.
   OpenLibrary button (a 3ds Max opened before the button was put, for one), which then did not come back. Now each
   start of 3ds Max puts it back if it is missing, where you left it if you moved it. To take it away, untick it in
   *Settings › 3ds Max*.
+- **Catalogue: only what the model needs is copied.** The list of what is not copied now takes everything that is not
+  a `.max` or a map: the FBX, OBJ and other formats of the model, material libraries, texts. Maps are images
+  (also EXR, HDR, TGA, PSD...) and the files a scene points at (IES, V-Ray and Corona proxies). You can still drag
+  anything to the maps.
+- **Catalogue: pasting the name.** Ctrl+V and Ctrl+C work in the name box, and in every text box of OpenLibrary;
+  they did not work anywhere.
+- **Catalogue: the Corona version when it is missing.** *Make the Corona version* is ticked by itself when the
+  download has no Corona `.max`, and unticked when it has one.
 
 ## 0.1.2 — 2026-11-27
 
