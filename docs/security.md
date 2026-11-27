@@ -41,8 +41,8 @@ against. It follows the checklist of the Open3D-SDK; a change to any of these up
 - In the folder the team chooses: `workspace.json`, `README.txt` and `medidas`.
 - In each 3ds Max where the person installs the bridge: `scripts\Open3D\OpenLibrary` and
   `scripts\startup\open3d_openlibrary.ms`, of the user's settings folder.
-  Once, unless the person said no, a button in its interface file (`.cuix`, backed up first in the data folder) and
-  its icon in `usericons`.
+  Unless the person said no, a button in its interface file (`.cuix`, backed up first in the data folder) and its
+  icon in `usericons`; at each start it is put back if the file lost it, and the file is only written then.
 
 It never asks for administrator rights, never uses the internet and downloads nothing.
 
